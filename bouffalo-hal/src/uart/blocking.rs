@@ -39,6 +39,22 @@ impl<UART: Deref<Target = RegisterBlock>, PADS> BlockingSerial<UART, PADS> {
         Ok(Self { uart, pads })
     }
 
+    #[inline]
+    pub fn enabledma(self) -> Result<Self, ConfigError> {
+        unsafe {
+            self.uart
+                .fifo_config_1
+                .modify(|val| val.set_transmit_threshold(7).set_receive_threshold(0));
+            self.uart
+                .transmit_config
+                .modify(|val| val.disable_freerun());
+            self.uart
+                .fifo_config_0
+                .modify(|val| val.enable_transmit_dma());
+        }
+        Ok(self)
+    }
+
     /// Release serial instance and return its peripheral and pads.
     #[inline]
     pub fn free(self) -> (UART, PADS) {

@@ -837,11 +837,19 @@ pub struct Peripherals<'a> {
     pub psram: PSRAM,
     /// Secure Digital High Capacity peripheral.
     pub sdh: SDH,
+    /// Direct Memory Access peripheral 0.
+    pub dma0: DMA0,
+    /// Direct Memory Access peripheral 1.
+    pub dma1: DMA1,
+    /// Direct Memory Access peripheral 2.
+    pub dma2: DMA2,
 }
 
 soc! {
     /// Global configuration peripheral.
     pub struct GLBv2 => 0x20000000, bouffalo_hal::glb::v2::RegisterBlock;
+    /// Direct Memory Access peripheral 1.
+    pub struct DMA1 => 0x20071000, bouffalo_hal::dma::RegisterBlock;
     /// Universal Asynchronous Receiver/Transmitter 0 with fixed base address.
     pub struct UART0 => 0x2000A000, bouffalo_hal::uart::RegisterBlock;
     /// Universal Asynchronous Receiver/Transmitter 1 with fixed base address.
@@ -858,12 +866,16 @@ soc! {
     pub struct UART2 => 0x2000AA00, bouffalo_hal::uart::RegisterBlock;
     /// Hardware LZ4 Decompressor.
     pub struct LZ4D => 0x2000AD00, bouffalo_hal::lz4d::RegisterBlock;
+    /// Direct Memory Access peripheral 0.
+    pub struct DMA0 => 0x2000C000, bouffalo_hal::dma::RegisterBlock;
     /// Hibernation control peripheral.
     pub struct HBN => 0x2000F000, bouffalo_hal::hbn::RegisterBlock;
     /// Secure Digital High Capacity peripheral.
     pub struct SDH => 0x20060000, bouffalo_hal::sdio::RegisterBlock;
     /// Ethernet Media Access Control peripheral.
     pub struct EMAC => 0x20070000, bouffalo_hal::emac::RegisterBlock;
+    /// Direct Memory Access peripheral 2.
+    pub struct DMA2 => 0x30001000, bouffalo_hal::dma::RegisterBlock;
     /// Universal Asynchronous Receiver/Transmitter 3 with fixed base address.
     pub struct UART3 => 0x30002000, bouffalo_hal::uart::RegisterBlock;
     /// Inter-Integrated Circuit bus 2 with fixed base address.
@@ -915,6 +927,9 @@ pub fn __rom_init_params(xtal_hz: u32) -> (Peripherals<'static>, Clocks) {
         mmglb: MMGLB { _private: () },
         psram: PSRAM { _private: () },
         sdh: SDH { _private: () },
+        dma0: DMA0 { _private: () },
+        dma1: DMA1 { _private: () },
+        dma2: DMA2 { _private: () },
     };
     let clocks = Clocks {
         xtal: Hertz(xtal_hz),
