@@ -3384,6 +3384,78 @@ impl Config {
     }
 }
 
+/// ADMA2 descriptor type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ADMA2DescType {
+    address: u32,
+    data_length: u16,
+    attribute: u16,
+}
+
+impl ADMA2DescType {
+    /// Create a new ADMA2 descriptor.
+    #[inline]
+    pub fn new(
+        addr: u32,
+        data_len: u16,
+        valid: bool,
+        end: bool,
+        interrupt: bool,
+        transfer: bool,
+        link: bool,
+    ) -> Self {
+        let mut attr = 0;
+        if valid {
+            attr |= ADMA2DescFlag::Valid as u16;
+        }
+        if end {
+            attr |= ADMA2DescFlag::End as u16;
+        }
+        if interrupt {
+            attr |= ADMA2DescFlag::Int as u16;
+        }
+        if transfer {
+            attr |= ADMA2DescFlag::Transfer as u16;
+        }
+        if link {
+            attr |= ADMA2DescFlag::Link as u16;
+        }
+
+        Self {
+            address: addr,
+            data_length: data_len,
+            attribute: attr,
+        }
+    }
+
+    /// Format into u64.
+    #[inline]
+    pub fn into_u64(self) -> u64 {
+        (self.address as u64) << 32 | (self.data_length as u64) << 16 | self.attribute as u64
+    }
+}
+
+/// ADMA2 descriptor flag.
+// TODO remove allow(dead_code)
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ADMA2DescFlag {
+    /// ADMA2 descriptor valid flag.
+    Valid = 0x01,
+    /// ADMA2 descriptor end flag.
+    End = 0x02,
+    /// ADMA2 descriptor interrupt flag.
+    Int = 0x04,
+    /// ADMA2 descriptor atcive1 flag.
+    Active1 = 0x10,
+    /// ADMA2 descriptor active2 flag.
+    Active2 = 0x20,
+    /// ADMA2 transfer descriptor flag.
+    Transfer = 0x21,
+    /// ADMA2 link descriptor flag.
+    Link = 0x31,
+}
+
 /// Managed Secure Digital Host Controller peripheral.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Sdh<SDH, PADS, const I: usize> {
@@ -3428,22 +3500,27 @@ impl<SDH: Deref<Target = RegisterBlock>, PADS, const I: usize> Sdh<SDH, PADS, I>
         // Miscellaneous settings.
         unsafe {
             // SDH_DMA_EN.
-            match config.dma_mode {
-                DmaMode::None => sdh.transfer_mode.modify(|val| val.disable_dma()),
-                DmaMode::SDMA => {
-                    if sdh.capabilities.read().is_sdma_supported() {
-                        sdh.transfer_mode.modify(|val| val.enable_dma());
-                    } else {
-                        sdh.transfer_mode.modify(|val| val.disable_dma())
-                    }
+            let cap = sdh.capabilities.read();
+            match (
+                config.dma_mode,
+                cap.is_sdma_supported(),
+                cap.is_adma2_supported(),
+            ) {
+                (DmaMode::SDMA, true, _) => {
+                    sdh.transfer_mode.modify(|val| val.enable_dma());
+                    sdh.normal_interrupt_status_enable
+                        .modify(|val| val.enable_dma_int());
+                    sdh.normal_interrupt_status_enable
+                        .modify(|val| val.disable_buffer_read_ready());
                 }
-                DmaMode::ADMA2 => {
-                    if sdh.capabilities.read().is_adma2_supported() {
-                        sdh.transfer_mode.modify(|val| val.enable_dma());
-                    } else {
-                        sdh.transfer_mode.modify(|val| val.disable_dma())
-                    }
+                (DmaMode::ADMA2, _, true) => {
+                    sdh.transfer_mode.modify(|val| val.enable_dma());
+                    sdh.normal_interrupt_status_enable
+                        .modify(|val| val.enable_dma_int());
+                    sdh.normal_interrupt_status_enable
+                        .modify(|val| val.disable_buffer_read_ready());
                 }
+                (_, _, _) => sdh.transfer_mode.modify(|val| val.disable_dma()),
             }
             sdh.host_control_1.modify(|val| {
                 val.set_bus_width(config.bus_width_mode) // SDH_EX_DATA_WIDTH.
@@ -3573,6 +3650,13 @@ impl<SDH: Deref<Target = RegisterBlock>, PADS, const I: usize> Sdh<SDH, PADS, I>
             } else {
                 writeln!(*w, "sdcard init done, size: {:.2} GB", gb_size).ok();
             }
+            let cap = self.sdh.capabilities.read();
+            let version = self.sdh.host_controller_version.read();
+
+            writeln!(*w, "SpecifiicVersion: {:?}", version.specific_version()).ok();
+            writeln!(*w, "SlotType: {:?}", cap.slot_type()).ok();
+            writeln!(*w, "SDMA support: {}", cap.is_sdma_supported()).ok();
+            writeln!(*w, "ADMA2 support: {}", cap.is_adma2_supported()).ok();
         }
     }
 
@@ -3610,6 +3694,10 @@ impl<SDH: Deref<Target = RegisterBlock>, PADS, const I: usize> Sdh<SDH, PADS, I>
             }
         }
 
+        // if self.config.dma_mode != DmaMode::None {
+        //     flag |= SdhTransFlag::EnDma as u32;
+        // }
+
         unsafe {
             self.sdh.argument.write(Argument(argument));
             self.sdh.command.write(
@@ -3644,28 +3732,78 @@ impl<SDH: Deref<Target = RegisterBlock>, PADS, const I: usize> Sdh<SDH, PADS, I>
             // Block_count.
             self.sdh.block_count.modify(|val| val.set_blocks_count(1));
 
-            // SDH_ClearIntStatus(SDH_INT_BUFFER_READ_READY).
-            self.sdh
-                .normal_interrupt_status
-                .modify(|val| val.clear_buffer_read_ready());
-        }
-        self.send_command(SdhResp::R1, CmdType::Normal, 17, block_idx, true);
-        while !self
-            .sdh
-            .normal_interrupt_status
-            .read()
-            .is_buffer_read_ready()
-        {
-            // SDH_INT_BUFFER_READ_READY.
-            // Wait for buffer read ready.
-            core::hint::spin_loop()
-        }
-        for j in 0..Block::LEN / 4 {
-            let val = self.sdh.buffer_data_port.read().buffer_data();
-            block[j * 4 + 0] = (val >> 0) as u8;
-            block[j * 4 + 1] = (val >> 8) as u8;
-            block[j * 4 + 2] = (val >> 16) as u8;
-            block[j * 4 + 3] = (val >> 24) as u8;
+            let cap = self.sdh.capabilities.read();
+            match (
+                self.config.dma_mode,
+                cap.is_sdma_supported(),
+                cap.is_adma2_supported(),
+            ) {
+                (DmaMode::SDMA, true, _) => {
+                    // TODO
+                }
+                (DmaMode::ADMA2, _, true) => {
+                    let dma_val = &mut [0 as u8; Block::LEN];
+                    let dma_val_addr = dma_val.as_mut_ptr() as u32;
+
+                    self.sdh
+                        .normal_interrupt_status
+                        .modify(|val| val.clear_dma_int());
+                    let adma_desc = ADMA2DescType::new(
+                        dma_val_addr,
+                        Block::LEN as u16,
+                        true,
+                        true,
+                        false,
+                        true,
+                        false,
+                    )
+                    .into_u64();
+
+                    self.sdh
+                        .adma_system_address
+                        .modify(|val| val.set_adma_sys_addr(adma_desc));
+
+                    self.send_command(SdhResp::R1, CmdType::Normal, 17, block_idx, true);
+
+                    while !self.sdh.normal_interrupt_status.read().if_dma_int_occurs() {
+                        core::hint::spin_loop()
+                    }
+
+                    sleep_ms(2000);
+
+                    for j in 0..Block::LEN {
+                        block[j] = dma_val[j];
+                    }
+                }
+                // All other cases.
+                (_, _, _) => {
+                    // SDH_ClearIntStatus(SDH_INT_BUFFER_READ_READY).
+                    self.sdh
+                        .normal_interrupt_status
+                        .modify(|val| val.clear_buffer_read_ready());
+
+                    self.send_command(SdhResp::R1, CmdType::Normal, 17, block_idx, true);
+
+                    while !self
+                        .sdh
+                        .normal_interrupt_status
+                        .read()
+                        .is_buffer_read_ready()
+                    {
+                        // SDH_INT_BUFFER_READ_READY.
+                        // Wait for buffer read ready.
+                        core::hint::spin_loop()
+                    }
+
+                    for j in 0..Block::LEN / 4 {
+                        let val = self.sdh.buffer_data_port.read().buffer_data();
+                        block[j * 4 + 0] = (val >> 0) as u8;
+                        block[j * 4 + 1] = (val >> 8) as u8;
+                        block[j * 4 + 2] = (val >> 16) as u8;
+                        block[j * 4 + 3] = (val >> 24) as u8;
+                    }
+                }
+            }
         }
     }
 
