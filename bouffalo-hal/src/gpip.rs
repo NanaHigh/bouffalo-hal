@@ -2,6 +2,7 @@
 
 use core::ops::Deref;
 
+use cfg_if::cfg_if;
 use volatile_register::RW;
 
 /// Generic DAC, ADC and ACOMP interface control peripheral registers.
@@ -163,7 +164,7 @@ impl GpadcConfig {
     }
     /// Clear adc coversion ready interrupt flag.
     #[inline]
-    pub fn clear_fifo_ready(self) -> Self {
+    pub fn clear_adc_ready(self) -> Self {
         Self(self.0 | Self::GPADC_RDY_CLR)
     }
     /// Check if fifo underrun interrupt occurs.
@@ -533,10 +534,15 @@ impl GpadcCommand {
     pub const fn neg_sel(self) -> u8 {
         ((self.0 & Self::NEG_SEL) >> 3) as u8
     }
-    /// Software reset the adc.
+    /// Start software reset of the adc.
     #[inline]
-    pub const fn software_reset(self) -> Self {
+    pub const fn start_software_reset(self) -> Self {
         Self(self.0 | Self::SOFT_RST)
+    }
+    /// Stop software reset of the adc.
+    #[inline]
+    pub const fn stop_software_reset(self) -> Self {
+        Self(self.0 & !Self::SOFT_RST)
     }
     /// Start adc conversion.
     #[inline]
@@ -565,6 +571,33 @@ impl GpadcCommand {
     }
 }
 
+/// Gpadc clock divider selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GpadcClkDivider {
+    Div4 = 1,
+    Div8 = 2,
+    Div12 = 3,
+    Div16 = 4,
+    Div20 = 5,
+    Div24 = 6,
+    Div32 = 7,
+}
+
+/// Gpadc resolution selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GpadcResolution {
+    Bit12 = 0,
+    Bit14 = 2,
+    Bit16 = 4,
+}
+
+/// Gpadc voltage reference selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GpadcVref {
+    V3p2 = 0,
+    V2p0 = 1,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct GpadcConfig1(u32);
@@ -574,11 +607,11 @@ impl GpadcConfig1 {
     const V11_SEL_MASK: u32 = 0x3 << 27;
     const DITHER_EN: u32 = 0x1 << 26;
     const SCAN_EN: u32 = 0x1 << 25;
-    const SCAN_LENGTH_MASK: u32 = 0xf << 21;
+    const SCAN_LENGTH_MASK: u32 = 0xF << 21;
     const CLK_DIV_RATIO_MASK: u32 = 0x7 << 18;
     const CLK_ANA_INV: u32 = 0x1 << 17;
     const CLK_ANA_DLY_EN: u32 = 0x1 << 16;
-    const CLK_ANA_DLY_MASK: u32 = 0xf << 12;
+    const CLK_ANA_DLY_MASK: u32 = 0xF << 12;
     const PWM_TRG_EN: u32 = 0x1 << 11;
     const LOWV_DET_EN: u32 = 0x1 << 10;
     const VCM_HYST_SEL: u32 = 0x1 << 9;
@@ -640,7 +673,9 @@ impl GpadcConfig1 {
     /// Set scan length.
     #[inline]
     pub fn set_scan_length(self, length: u8) -> Self {
-        Self((self.0 & !Self::SCAN_LENGTH_MASK) | (Self::SCAN_LENGTH_MASK & ((length as u32) << 21)))
+        Self(
+            (self.0 & !Self::SCAN_LENGTH_MASK) | (Self::SCAN_LENGTH_MASK & ((length as u32) << 21)),
+        )
     }
     /// Get scan length.
     #[inline]
@@ -649,13 +684,25 @@ impl GpadcConfig1 {
     }
     /// Set clock division ratio.
     #[inline]
-    pub fn set_clk_div_ratio(self, ratio: u8) -> Self {
-        Self((self.0 & !Self::CLK_DIV_RATIO_MASK) | (Self::CLK_DIV_RATIO_MASK & ((ratio as u32) << 18)))
+    pub fn set_clk_div_ratio(self, ratio: GpadcClkDivider) -> Self {
+        Self(
+            (self.0 & !Self::CLK_DIV_RATIO_MASK)
+                | (Self::CLK_DIV_RATIO_MASK & ((ratio as u32) << 18)),
+        )
     }
     /// Get clock division ratio.
     #[inline]
-    pub fn clk_div_ratio(self) -> u8 {
-        ((self.0 & Self::CLK_DIV_RATIO_MASK) >> 18) as u8
+    pub fn clk_div_ratio(self) -> GpadcClkDivider {
+        match ((self.0 & Self::CLK_DIV_RATIO_MASK) >> 18) as u8 {
+            1 => GpadcClkDivider::Div4,
+            2 => GpadcClkDivider::Div8,
+            3 => GpadcClkDivider::Div12,
+            4 => GpadcClkDivider::Div16,
+            5 => GpadcClkDivider::Div20,
+            6 => GpadcClkDivider::Div24,
+            7 => GpadcClkDivider::Div32,
+            _ => unreachable!(),
+        }
     }
     /// Enable invert analog clock.
     #[inline]
@@ -759,13 +806,18 @@ impl GpadcConfig1 {
     }
     /// Set resolution selection.
     #[inline]
-    pub fn set_res_sel(self, res: u8) -> Self {
+    pub fn set_res_sel(self, res: GpadcResolution) -> Self {
         Self((self.0 & !Self::RES_SEL_MASK) | (Self::RES_SEL_MASK & ((res as u32) << 2)))
     }
     /// Get resolution selection.
     #[inline]
-    pub fn res_sel(self) -> u8 {
-        ((self.0 & Self::RES_SEL_MASK) >> 2) as u8
+    pub fn res_sel(self) -> GpadcResolution {
+        match ((self.0 & Self::RES_SEL_MASK) >> 2) as u8 {
+            0 => GpadcResolution::Bit12,
+            2 => GpadcResolution::Bit14,
+            4 => GpadcResolution::Bit16,
+            _ => unreachable!(),
+        }
     }
     /// Enable continuous conversion.
     #[inline]
@@ -821,6 +873,248 @@ impl GpadcConfig2 {
     const VBAT_EN: u32 = 0x1 << 4;
     const VREF_SEL: u32 = 0x1 << 3;
     const DIFF_MODE: u32 = 0x1 << 2;
+
+    /// Enable temperature sensor voltage reference low mode.
+    #[inline]
+    pub fn enable_tsvbe_low(self) -> Self {
+        Self(self.0 | Self::TSVBE_LOW)
+    }
+    /// Disable temperature sensor voltage reference low mode.
+    #[inline]
+    pub fn disable_tsvbe_low(self) -> Self {
+        Self(self.0 & !Self::TSVBE_LOW)
+    }
+    /// Check if temperature sensor voltage reference low mode is enabled.
+    #[inline]
+    pub fn is_tsvbe_low_enabled(self) -> bool {
+        self.0 & Self::TSVBE_LOW != 0
+    }
+    /// Set delay selection.
+    #[inline]
+    pub fn set_dly_sel(self, sel: u8) -> Self {
+        Self((self.0 & !Self::DLY_SEL_MASK) | (Self::DLY_SEL_MASK & ((sel as u32) << 28)))
+    }
+    /// Get delay selection.
+    #[inline]
+    pub fn dly_sel(self) -> u8 {
+        ((self.0 & Self::DLY_SEL_MASK) >> 28) as u8
+    }
+    /// Set PGA1 gain.
+    #[inline]
+    pub fn set_pga1_gain(self, gain: u8) -> Self {
+        Self((self.0 & !Self::PGA1_GAIN_MASK) | (Self::PGA1_GAIN_MASK & ((gain as u32) << 25)))
+    }
+    /// Get PGA1 gain.
+    #[inline]
+    pub fn pga1_gain(self) -> u8 {
+        ((self.0 & Self::PGA1_GAIN_MASK) >> 25) as u8
+    }
+    /// Set PGA2 gain.
+    #[inline]
+    pub fn set_pga2_gain(self, gain: u8) -> Self {
+        Self((self.0 & !Self::PGA2_GAIN_MASK) | (Self::PGA2_GAIN_MASK & ((gain as u32) << 22)))
+    }
+    /// Get PGA2 gain.
+    #[inline]
+    pub fn pga2_gain(self) -> u8 {
+        ((self.0 & Self::PGA2_GAIN_MASK) >> 22) as u8
+    }
+    /// Set test selection.
+    #[inline]
+    pub fn set_test_sel(self, sel: u8) -> Self {
+        Self((self.0 & !Self::TEST_SEL_MASK) | (Self::TEST_SEL_MASK & ((sel as u32) << 19)))
+    }
+    /// Get test selection.
+    #[inline]
+    pub fn test_sel(self) -> u8 {
+        ((self.0 & Self::TEST_SEL_MASK) >> 19) as u8
+    }
+    /// Enable test mode.
+    #[inline]
+    pub fn enable_test(self) -> Self {
+        Self(self.0 | Self::TEST_EN)
+    }
+    /// Disable test mode.
+    #[inline]
+    pub fn disable_test(self) -> Self {
+        Self(self.0 & !Self::TEST_EN)
+    }
+    /// Check if test mode is enabled.
+    #[inline]
+    pub fn is_test_enabled(self) -> bool {
+        self.0 & Self::TEST_EN != 0
+    }
+    /// Enable bias selection.
+    #[inline]
+    pub fn enable_bias_sel(self) -> Self {
+        Self(self.0 | Self::BIAS_SEL)
+    }
+    /// Disable bias selection.
+    #[inline]
+    pub fn disable_bias_sel(self) -> Self {
+        Self(self.0 & !Self::BIAS_SEL)
+    }
+    /// Check if bias selection is enabled.
+    #[inline]
+    pub fn is_bias_sel_enabled(self) -> bool {
+        self.0 & Self::BIAS_SEL != 0
+    }
+    /// Set chop mode.
+    #[inline]
+    pub fn set_chop_mode(self, mode: u8) -> Self {
+        Self((self.0 & !Self::CHOP_MODE_MASK) | (Self::CHOP_MODE_MASK & ((mode as u32) << 15)))
+    }
+    /// Get chop mode.
+    #[inline]
+    pub fn chop_mode(self) -> u8 {
+        ((self.0 & Self::CHOP_MODE_MASK) >> 15) as u8
+    }
+    /// Enable PGA VCMI.
+    #[inline]
+    pub fn enable_pga_vcmi(self) -> Self {
+        Self(self.0 | Self::PGA_VCMI_EN)
+    }
+    /// Disable PGA VCMI.
+    #[inline]
+    pub fn disable_pga_vcmi(self) -> Self {
+        Self(self.0 & !Self::PGA_VCMI_EN)
+    }
+    /// Check if PGA VCMI is enabled.
+    #[inline]
+    pub fn is_pga_vcmi_enabled(self) -> bool {
+        self.0 & Self::PGA_VCMI_EN != 0
+    }
+    /// Enable PGA.
+    #[inline]
+    pub fn enable_pga(self) -> Self {
+        Self(self.0 | Self::PGA_EN)
+    }
+    /// Disable PGA.
+    #[inline]
+    pub fn disable_pga(self) -> Self {
+        Self(self.0 & !Self::PGA_EN)
+    }
+    /// Check if PGA is enabled.
+    #[inline]
+    pub fn is_pga_enabled(self) -> bool {
+        self.0 & Self::PGA_EN != 0
+    }
+    /// Set PGA offset calibration.
+    #[inline]
+    pub fn set_pga_os_cal(self, cal: u8) -> Self {
+        Self((self.0 & !Self::PGA_OS_CAL_MASK) | (Self::PGA_OS_CAL_MASK & ((cal as u32) << 9)))
+    }
+    /// Get PGA offset calibration.
+    #[inline]
+    pub fn pga_os_cal(self) -> u8 {
+        ((self.0 & Self::PGA_OS_CAL_MASK) >> 9) as u8
+    }
+    /// Set PGA VCM.
+    #[inline]
+    pub fn set_pga_vcm(self, vcm: u8) -> Self {
+        Self((self.0 & !Self::PGA_VCM_MASK) | (Self::PGA_VCM_MASK & ((vcm as u32) << 7)))
+    }
+    /// Get PGA VCM.
+    #[inline]
+    pub fn pga_vcm(self) -> u8 {
+        ((self.0 & Self::PGA_VCM_MASK) >> 7) as u8
+    }
+    /// Enable temperature sensor.
+    #[inline]
+    pub fn enable_ts(self) -> Self {
+        Self(self.0 | Self::TS_EN)
+    }
+    /// Disable temperature sensor.
+    #[inline]
+    pub fn disable_ts(self) -> Self {
+        Self(self.0 & !Self::TS_EN)
+    }
+    /// Check if temperature sensor is enabled.
+    #[inline]
+    pub fn is_ts_enabled(self) -> bool {
+        self.0 & Self::TS_EN != 0
+    }
+    /// Set external temperature sensor selection.
+    #[inline]
+    pub fn set_tsext_sel(self, sel: bool) -> Self {
+        if sel {
+            Self(self.0 | Self::TSEXT_SEL)
+        } else {
+            Self(self.0 & !Self::TSEXT_SEL)
+        }
+    }
+    /// Check if external temperature sensor is selected.
+    #[inline]
+    pub fn is_tsext_sel(self) -> bool {
+        self.0 & Self::TSEXT_SEL != 0
+    }
+    /// Enable battery voltage reference.
+    #[inline]
+    pub fn enable_vbat(self) -> Self {
+        Self(self.0 | Self::VBAT_EN)
+    }
+    /// Disable battery voltage reference.
+    #[inline]
+    pub fn disable_vbat(self) -> Self {
+        Self(self.0 & !Self::VBAT_EN)
+    }
+    /// Check if battery voltage reference is enabled.
+    #[inline]
+    pub fn is_vbat_enabled(self) -> bool {
+        self.0 & Self::VBAT_EN != 0
+    }
+    /// Set voltage reference selection.
+    #[inline]
+    pub fn set_vref_sel(self, sel: bool) -> Self {
+        if sel {
+            Self(self.0 | Self::VREF_SEL)
+        } else {
+            Self(self.0 & !Self::VREF_SEL)
+        }
+    }
+    /// Check if voltage reference is selected.
+    #[inline]
+    pub fn is_vref_sel(self) -> bool {
+        self.0 & Self::VREF_SEL != 0
+    }
+    /// Enable differential mode.
+    #[inline]
+    pub fn enable_diff_mode(self) -> Self {
+        Self(self.0 | Self::DIFF_MODE)
+    }
+    /// Disable differential mode.
+    #[inline]
+    pub fn disable_diff_mode(self) -> Self {
+        Self(self.0 & !Self::DIFF_MODE)
+    }
+    /// Check if differential mode is enabled.
+    #[inline]
+    pub fn is_diff_mode_enabled(self) -> bool {
+        self.0 & Self::DIFF_MODE != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GpadcChannel {
+    Channel0,
+    Channel1,
+    Channel2,
+    Channel3,
+    Channel4,
+    Channel5,
+    Channel6,
+    Channel7,
+    Channel8,
+    Channel9,
+    Channel10,
+    Channel11,
+    ChannelDacA,
+    ChannelDacB,
+    ChannelTSENP,
+    ChannelTSENN,
+    ChannelVRef,
+    ChannelVBatHalf = 18,
+    ChannelVGND = 23,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -828,12 +1122,73 @@ impl GpadcConfig2 {
 pub struct AdcConverationSequence1(u32);
 
 impl AdcConverationSequence1 {
-    const SCAN_POS_5_MASK: u32 = 0x1f << 25;
-    const SCAN_POS_4_MASK: u32 = 0x1f << 20;
-    const SCAN_POS_3_MASK: u32 = 0x1f << 15;
-    const SCAN_POS_2_MASK: u32 = 0x1f << 10;
-    const SCAN_POS_1_MASK: u32 = 0x1f << 5;
-    const SCAN_POS_0_MASK: u32 = 0x1f << 0;
+    const SCAN_POS_5_MASK: u32 = 0x1F << 25;
+    const SCAN_POS_4_MASK: u32 = 0x1F << 20;
+    const SCAN_POS_3_MASK: u32 = 0x1F << 15;
+    const SCAN_POS_2_MASK: u32 = 0x1F << 10;
+    const SCAN_POS_1_MASK: u32 = 0x1F << 5;
+    const SCAN_POS_0_MASK: u32 = 0x1F << 0;
+
+    /// Set scan position 5.
+    #[inline]
+    pub fn set_scan_pos_5(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_5_MASK) | (Self::SCAN_POS_5_MASK & ((pos as u32) << 25)))
+    }
+    /// Get scan position 5.
+    #[inline]
+    pub fn scan_pos_5(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_5_MASK) >> 25) as u8
+    }
+    /// Set scan position 4.
+    #[inline]
+    pub fn set_scan_pos_4(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_4_MASK) | (Self::SCAN_POS_4_MASK & ((pos as u32) << 20)))
+    }
+    /// Get scan position 4.
+    #[inline]
+    pub fn scan_pos_4(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_4_MASK) >> 20) as u8
+    }
+    /// Set scan position 3.
+    #[inline]
+    pub fn set_scan_pos_3(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_3_MASK) | (Self::SCAN_POS_3_MASK & ((pos as u32) << 15)))
+    }
+    /// Get scan position 3.
+    #[inline]
+    pub fn scan_pos_3(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_3_MASK) >> 15) as u8
+    }
+    /// Set scan position 2.
+    #[inline]
+    pub fn set_scan_pos_2(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_2_MASK) | (Self::SCAN_POS_2_MASK & ((pos as u32) << 10)))
+    }
+    /// Get scan position 2.
+    #[inline]
+    pub fn scan_pos_2(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_2_MASK) >> 10) as u8
+    }
+    /// Set scan position 1.
+    #[inline]
+    pub fn set_scan_pos_1(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_1_MASK) | (Self::SCAN_POS_1_MASK & ((pos as u32) << 5)))
+    }
+    /// Get scan position 1.
+    #[inline]
+    pub fn scan_pos_1(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_1_MASK) >> 5) as u8
+    }
+    /// Set scan position 0.
+    #[inline]
+    pub fn set_scan_pos_0(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_0_MASK) | (Self::SCAN_POS_0_MASK & (pos as u32)))
+    }
+    /// Get scan position 0.
+    #[inline]
+    pub fn scan_pos_0(self) -> u8 {
+        (self.0 & Self::SCAN_POS_0_MASK) as u8
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -841,12 +1196,73 @@ impl AdcConverationSequence1 {
 pub struct AdcConverationSequence2(u32);
 
 impl AdcConverationSequence2 {
-    const SCAN_POS_11_MASK: u32 = 0x1f << 25;
-    const SCAN_POS_10_MASK: u32 = 0x1f << 20;
-    const SCAN_POS_9_MASK: u32 = 0x1f << 15;
-    const SCAN_POS_8_MASK: u32 = 0x1f << 10;
-    const SCAN_POS_7_MASK: u32 = 0x1f << 5;
-    const SCAN_POS_6_MASK: u32 = 0x1f << 0;
+    const SCAN_POS_11_MASK: u32 = 0x1F << 25;
+    const SCAN_POS_10_MASK: u32 = 0x1F << 20;
+    const SCAN_POS_9_MASK: u32 = 0x1F << 15;
+    const SCAN_POS_8_MASK: u32 = 0x1F << 10;
+    const SCAN_POS_7_MASK: u32 = 0x1F << 5;
+    const SCAN_POS_6_MASK: u32 = 0x1F << 0;
+
+    /// Set scan position 11.
+    #[inline]
+    pub fn set_scan_pos_11(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_11_MASK) | (Self::SCAN_POS_11_MASK & ((pos as u32) << 25)))
+    }
+    /// Get scan position 11.
+    #[inline]
+    pub fn scan_pos_11(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_11_MASK) >> 25) as u8
+    }
+    /// Set scan position 10.
+    #[inline]
+    pub fn set_scan_pos_10(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_10_MASK) | (Self::SCAN_POS_10_MASK & ((pos as u32) << 20)))
+    }
+    /// Get scan position 10.
+    #[inline]
+    pub fn scan_pos_10(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_10_MASK) >> 20) as u8
+    }
+    /// Set scan position 9.
+    #[inline]
+    pub fn set_scan_pos_9(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_9_MASK) | (Self::SCAN_POS_9_MASK & ((pos as u32) << 15)))
+    }
+    /// Get scan position 9.
+    #[inline]
+    pub fn scan_pos_9(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_9_MASK) >> 15) as u8
+    }
+    /// Set scan position 8.
+    #[inline]
+    pub fn set_scan_pos_8(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_8_MASK) | (Self::SCAN_POS_8_MASK & ((pos as u32) << 10)))
+    }
+    /// Get scan position 8.
+    #[inline]
+    pub fn scan_pos_8(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_8_MASK) >> 10) as u8
+    }
+    /// Set scan position 7.
+    #[inline]
+    pub fn set_scan_pos_7(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_7_MASK) | (Self::SCAN_POS_7_MASK & ((pos as u32) << 5)))
+    }
+    /// Get scan position 7.
+    #[inline]
+    pub fn scan_pos_7(self) -> u8 {
+        ((self.0 & Self::SCAN_POS_7_MASK) >> 5) as u8
+    }
+    /// Set scan position 6.
+    #[inline]
+    pub fn set_scan_pos_6(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_POS_6_MASK) | (Self::SCAN_POS_6_MASK & (pos as u32)))
+    }
+    /// Get scan position 6.
+    #[inline]
+    pub fn scan_pos_6(self) -> u8 {
+        (self.0 & Self::SCAN_POS_6_MASK) as u8
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -854,12 +1270,73 @@ impl AdcConverationSequence2 {
 pub struct AdcConverationSequence3(u32);
 
 impl AdcConverationSequence3 {
-    const SCAN_NEG_5_MASK: u32 = 0x1f << 25;
-    const SCAN_NEG_4_MASK: u32 = 0x1f << 20;
-    const SCAN_NEG_3_MASK: u32 = 0x1f << 15;
-    const SCAN_NEG_2_MASK: u32 = 0x1f << 10;
-    const SCAN_NEG_1_MASK: u32 = 0x1f << 5;
-    const SCAN_NEG_0_MASK: u32 = 0x1f << 0;
+    const SCAN_NEG_5_MASK: u32 = 0x1F << 25;
+    const SCAN_NEG_4_MASK: u32 = 0x1F << 20;
+    const SCAN_NEG_3_MASK: u32 = 0x1F << 15;
+    const SCAN_NEG_2_MASK: u32 = 0x1F << 10;
+    const SCAN_NEG_1_MASK: u32 = 0x1F << 5;
+    const SCAN_NEG_0_MASK: u32 = 0x1F << 0;
+
+    /// Set scan negative position 5.
+    #[inline]
+    pub fn set_scan_neg_5(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_5_MASK) | (Self::SCAN_NEG_5_MASK & ((pos as u32) << 25)))
+    }
+    /// Get scan negative position 5.
+    #[inline]
+    pub fn scan_neg_5(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_5_MASK) >> 25) as u8
+    }
+    /// Set scan negative position 4.
+    #[inline]
+    pub fn set_scan_neg_4(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_4_MASK) | (Self::SCAN_NEG_4_MASK & ((pos as u32) << 20)))
+    }
+    /// Get scan negative position 4.
+    #[inline]
+    pub fn scan_neg_4(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_4_MASK) >> 20) as u8
+    }
+    /// Set scan negative position 3.
+    #[inline]
+    pub fn set_scan_neg_3(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_3_MASK) | (Self::SCAN_NEG_3_MASK & ((pos as u32) << 15)))
+    }
+    /// Get scan negative position 3.
+    #[inline]
+    pub fn scan_neg_3(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_3_MASK) >> 15) as u8
+    }
+    /// Set scan negative position 2.
+    #[inline]
+    pub fn set_scan_neg_2(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_2_MASK) | (Self::SCAN_NEG_2_MASK & ((pos as u32) << 10)))
+    }
+    /// Get scan negative position 2.
+    #[inline]
+    pub fn scan_neg_2(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_2_MASK) >> 10) as u8
+    }
+    /// Set scan negative position 1.
+    #[inline]
+    pub fn set_scan_neg_1(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_1_MASK) | (Self::SCAN_NEG_1_MASK & ((pos as u32) << 5)))
+    }
+    /// Get scan negative position 1.
+    #[inline]
+    pub fn scan_neg_1(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_1_MASK) >> 5) as u8
+    }
+    /// Set scan negative position 0.
+    #[inline]
+    pub fn set_scan_neg_0(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_0_MASK) | (Self::SCAN_NEG_0_MASK & (pos as u32)))
+    }
+    /// Get scan negative position 0.
+    #[inline]
+    pub fn scan_neg_0(self) -> u8 {
+        (self.0 & Self::SCAN_NEG_0_MASK) as u8
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -867,12 +1344,73 @@ impl AdcConverationSequence3 {
 pub struct AdcConverationSequence4(u32);
 
 impl AdcConverationSequence4 {
-    const SCAN_NEG_11_MASK: u32 = 0x1f << 25;
-    const SCAN_NEG_10_MASK: u32 = 0x1f << 20;
-    const SCAN_NEG_9_MASK: u32 = 0x1f << 15;
-    const SCAN_NEG_8_MASK: u32 = 0x1f << 10;
-    const SCAN_NEG_7_MASK: u32 = 0x1f << 5;
-    const SCAN_NEG_6_MASK: u32 = 0x1f << 0;
+    const SCAN_NEG_11_MASK: u32 = 0x1F << 25;
+    const SCAN_NEG_10_MASK: u32 = 0x1F << 20;
+    const SCAN_NEG_9_MASK: u32 = 0x1F << 15;
+    const SCAN_NEG_8_MASK: u32 = 0x1F << 10;
+    const SCAN_NEG_7_MASK: u32 = 0x1F << 5;
+    const SCAN_NEG_6_MASK: u32 = 0x1F << 0;
+
+    /// Set scan negative position 11.
+    #[inline]
+    pub fn set_scan_neg_11(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_11_MASK) | (Self::SCAN_NEG_11_MASK & ((pos as u32) << 25)))
+    }
+    /// Get scan negative position 11.
+    #[inline]
+    pub fn scan_neg_11(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_11_MASK) >> 25) as u8
+    }
+    /// Set scan negative position 10.
+    #[inline]
+    pub fn set_scan_neg_10(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_10_MASK) | (Self::SCAN_NEG_10_MASK & ((pos as u32) << 20)))
+    }
+    /// Get scan negative position 10.
+    #[inline]
+    pub fn scan_neg_10(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_10_MASK) >> 20) as u8
+    }
+    /// Set scan negative position 9.
+    #[inline]
+    pub fn set_scan_neg_9(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_9_MASK) | (Self::SCAN_NEG_9_MASK & ((pos as u32) << 15)))
+    }
+    /// Get scan negative position 9.
+    #[inline]
+    pub fn scan_neg_9(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_9_MASK) >> 15) as u8
+    }
+    /// Set scan negative position 8.
+    #[inline]
+    pub fn set_scan_neg_8(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_8_MASK) | (Self::SCAN_NEG_8_MASK & ((pos as u32) << 10)))
+    }
+    /// Get scan negative position 8.
+    #[inline]
+    pub fn scan_neg_8(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_8_MASK) >> 10) as u8
+    }
+    /// Set scan negative position 7.
+    #[inline]
+    pub fn set_scan_neg_7(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_7_MASK) | (Self::SCAN_NEG_7_MASK & ((pos as u32) << 5)))
+    }
+    /// Get scan negative position 7.
+    #[inline]
+    pub fn scan_neg_7(self) -> u8 {
+        ((self.0 & Self::SCAN_NEG_7_MASK) >> 5) as u8
+    }
+    /// Set scan negative position 6.
+    #[inline]
+    pub fn set_scan_neg_6(self, pos: u8) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_6_MASK) | (Self::SCAN_NEG_6_MASK & (pos as u32)))
+    }
+    /// Get scan negative position 6.
+    #[inline]
+    pub fn scan_neg_6(self) -> u8 {
+        (self.0 & Self::SCAN_NEG_6_MASK) as u8
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -882,6 +1420,17 @@ pub struct GpadcStatus(u32);
 impl GpadcStatus {
     const RESERVED_MASK: u32 = 0xffff << 16;
     const DATA_RDY: u32 = 0x1 << 0;
+
+    /// Check if data is ready.
+    #[inline]
+    pub fn is_data_ready(self) -> bool {
+        self.0 & Self::DATA_RDY != 0
+    }
+    /// Get reserved bits.
+    #[inline]
+    pub fn reserved(self) -> u16 {
+        ((self.0 & Self::RESERVED_MASK) >> 16) as u16
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -895,6 +1444,57 @@ impl GpadcInterruptState {
     const NEG_SATUR_CLR: u32 = 0x1 << 4;
     const POS_SATUR: u32 = 0x1 << 1;
     const NEG_SATUR: u32 = 0x1 << 0;
+
+    /// Enable positive saturation interrupt.
+    #[inline]
+    pub fn enable_pos_satur_interrupt(self) -> Self {
+        Self(self.0 & !Self::POS_SATUR)
+    }
+    /// Disable positive saturation interrupt.
+    #[inline]
+    pub fn disable_pos_satur_interrupt(self) -> Self {
+        Self(self.0 | Self::POS_SATUR)
+    }
+    /// Check if positive saturation interrupt is enabled.
+    #[inline]
+    pub fn is_pos_satur_interrupt_enabled(self) -> bool {
+        self.0 & Self::POS_SATUR == 0
+    }
+    /// Enable negative saturation interrupt.
+    #[inline]
+    pub fn enable_neg_satur_interrupt(self) -> Self {
+        Self(self.0 & !Self::NEG_SATUR)
+    }
+    /// Disable negative saturation interrupt.
+    #[inline]
+    pub fn disable_neg_satur_interrupt(self) -> Self {
+        Self(self.0 | Self::NEG_SATUR)
+    }
+    /// Check if negative saturation interrupt is enabled.
+    #[inline]
+    pub fn is_neg_satur_interrupt_enabled(self) -> bool {
+        self.0 & Self::NEG_SATUR == 0
+    }
+    /// Clear positive saturation interrupt.
+    #[inline]
+    pub fn clear_pos_satur_interrupt(self) -> Self {
+        Self(self.0 | Self::POS_SATUR_CLR)
+    }
+    /// Clear negative saturation interrupt.
+    #[inline]
+    pub fn clear_neg_satur_interrupt(self) -> Self {
+        Self(self.0 | Self::NEG_SATUR_CLR)
+    }
+    /// Check if positive saturation interrupt occurs.
+    #[inline]
+    pub fn if_pos_satur_interrupt_occurs(self) -> bool {
+        self.0 & Self::POS_SATUR_MASK != 0
+    }
+    /// Check if negative saturation interrupt occurs.
+    #[inline]
+    pub fn if_neg_satur_interrupt_occurs(self) -> bool {
+        self.0 & Self::NEG_SATUR_MASK != 0
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -903,6 +1503,12 @@ pub struct GpadcResult(u32);
 
 impl GpadcResult {
     const DATA_OUT_MASK: u32 = 0x3ffffff << 0;
+
+    /// Get the ADC data output.
+    #[inline]
+    pub fn data_out(self) -> u32 {
+        self.0 & Self::DATA_OUT_MASK
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -911,6 +1517,12 @@ pub struct GpadcRawResult(u32);
 
 impl GpadcRawResult {
     const RAW_DATA_MASK: u32 = 0xfff << 0;
+
+    /// Get the raw ADC data.
+    #[inline]
+    pub fn raw_data(self) -> u16 {
+        (self.0 & Self::RAW_DATA_MASK) as u16
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -919,6 +1531,17 @@ pub struct GpadcDefine(u32);
 
 impl GpadcDefine {
     const OS_CAL_DATA_MASK: u32 = 0xffff << 0;
+
+    /// Set the offset calibration data.
+    #[inline]
+    pub fn set_os_cal_data(self, data: u16) -> Self {
+        Self((self.0 & !Self::OS_CAL_DATA_MASK) | ((data as u32) & Self::OS_CAL_DATA_MASK))
+    }
+    /// Get the offset calibration data.
+    #[inline]
+    pub fn os_cal_data(self) -> u16 {
+        (self.0 & Self::OS_CAL_DATA_MASK) as u16
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -953,17 +1576,188 @@ pub struct GpdacBctrl(u32);
 #[repr(transparent)]
 pub struct GpdacData(u32);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GpadcTsenMode {
+    InternalDiode = 0,
+    ExternalDiode = 1,
+}
+
+pub struct AdcConfig {
+    /// Clock divider for the adc.
+    clk_div: GpadcClkDivider,
+    /// Resolution of the adc.
+    resolution: GpadcResolution,
+    /// Voltage reference for the adc.
+    vref: GpadcVref,
+    /// Enable or disable the adc scan mode.
+    scan_en: bool,
+    /// Enable or disable the adc differential mode.
+    diff_en: bool,
+    /// Enable or disable the adc continuous conversion mode.
+    continuous_conv_en: bool,
+}
+impl Default for AdcConfig {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            clk_div: GpadcClkDivider::Div32,
+            resolution: GpadcResolution::Bit16,
+            vref: GpadcVref::V2p0,
+            scan_en: false,
+            diff_en: false,
+            continuous_conv_en: true,
+        }
+    }
+}
+
+impl AdcConfig {
+    /// Set the clock divider for the adc.
+    #[inline]
+    pub fn set_clk_div(mut self, clk_div: GpadcClkDivider) -> Self {
+        self.clk_div = clk_div;
+        self
+    }
+    /// Set the resolution for the adc.
+    #[inline]
+    pub fn set_resolution(mut self, resolution: GpadcResolution) -> Self {
+        self.resolution = resolution;
+        self
+    }
+    /// Set the voltage reference for the adc.
+    #[inline]
+    pub fn set_vref(mut self, vref: GpadcVref) -> Self {
+        self.vref = vref;
+        self
+    }
+    /// Enable scan mode for the adc.
+    #[inline]
+    pub fn enable_scan(mut self) -> Self {
+        self.scan_en = true;
+        self
+    }
+    /// Disable scan mode for the adc.
+    #[inline]
+    pub fn disable_scan(mut self) -> Self {
+        self.scan_en = false;
+        self
+    }
+    /// Check if scan mode is enabled.
+    #[inline]
+    pub fn enable_diff_mode(mut self) -> Self {
+        self.diff_en = true;
+        self
+    }
+    /// Check if scan mode is enabled.
+    #[inline]
+    pub fn disable_diff_mode(mut self) -> Self {
+        self.diff_en = false;
+        self
+    }
+    /// Check if scan mode is enabled.
+    #[inline]
+    pub fn enable_continuous_conv(mut self) -> Self {
+        self.continuous_conv_en = true;
+        self
+    }
+    /// Check if scan mode is enabled.
+    #[inline]
+    pub fn disable_continuous_conv(mut self) -> Self {
+        self.continuous_conv_en = false;
+        self
+    }
+}
+
 pub struct Adc<ADC> {
     adc: ADC,
 }
 
 impl<ADC: Deref<Target = RegisterBlock>> Adc<ADC> {
     #[inline]
-    pub fn new(adc: ADC) -> Self {
+    pub fn new(adc: ADC, config: AdcConfig) -> Self {
         unsafe {
-            adc.gpadc_command.modify(|v| v.enable_global());
-            adc.gpadc_command.modify(|v| v.enable_software_reset());
-            adc.gpadc_command.modify(|v| v.disable_software_reset());
+            adc.gpadc_command.modify(|v| v.disable_global());
+            adc.gpadc_command
+                .modify(|v| v.enable_global().start_software_reset());
+
+            for _ in 0..8 {
+                core::arch::asm!("nop");
+            }
+
+            adc.gpadc_command.modify(|v| v.stop_software_reset());
+
+            adc.gpadc_config_1.modify(|v| {
+                let v = v.set_v18_sel(2)
+                    .set_v11_sel(1)
+                    .set_clk_div_ratio(config.clk_div)
+                    .set_res_sel(config.resolution);
+
+                #[cfg(feature = "bl702")]{
+                    let v = v.enable_lowv_det()
+                        .enable_vcm_hyst_sel()
+                        .enable_vcm_sel();
+                }
+                
+                let v = if config.scan_en {
+                    v.enable_scan()
+                } else {
+                    v.disable_scan()
+                };
+                let v = if config.continuous_conv_en {
+                    v.enable_continuous_conv()
+                } else {
+                    v.disable_continuous_conv()
+                };
+                v
+            });
+
+            for _ in 0..8 {
+                core::arch::asm!("nop");
+            }
+
+            adc.gpadc_config_2.modify(|v| {
+                let v = v.set_dly_sel(2)
+                    .enable_pga()
+                    .set_pga1_gain(1)
+                    .set_pga_os_cal(8)
+                    .set_chop_mode(2) // Vref AZ and PGA chop on.
+                    .set_pga_vcm(1) // PGA output common mode control 1.2V.
+                    .set_vref_sel(matches!(config.vref, GpadcVref::V2p0));
+
+                #[cfg(feature = "bl702")]
+                let v = v.set_pga2_gain(0);
+                #[cfg(not(feature = "bl702"))]
+                let v = v.set_pga2_gain(1);
+
+                if config.diff_en {
+                    v.enable_diff_mode()
+                } else {
+                    v.disable_diff_mode()
+                }
+            });
+
+            adc.gpadc_command.modify(|v| {
+                // Mic2 diff enable.
+                let v = v.enable_mic2_diff();
+                if config.diff_en {
+                    v.unset_neg_gnd()
+                } else {
+                    v.set_neg_gnd()
+                }
+            });
+            
+            // Set calibration offset.
+            adc.gpadc_define.modify(|v| v.set_os_cal_data(0));
+            adc.gpadc_config.modify(|v| {
+                let v = v.disable_fifo_overrun()
+                    .disable_fifo_underrun()
+                    .disable_adc_ready()
+                    .clear_fifo_overrun()
+                    .clear_fifo_underrun()
+                    .clear_adc_ready();
+                #[cfg(feature = "bl702")]
+                let v = v.disable_fifo_ready();
+                v
+            });
         }
         Self { adc }
     }
