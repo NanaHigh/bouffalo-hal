@@ -157,15 +157,30 @@ impl GpadcConfig {
     pub fn clear_fifo_underrun(self) -> Self {
         Self(self.0 | Self::FIFO_UNDERRUN_CLR)
     }
+    /// Set fifo underrun interrupt flag bit.
+    #[inline]
+    pub fn set_fifo_underrun_clr_bit(self, bit: u8) -> Self {
+        Self(self.0 | Self::FIFO_UNDERRUN_CLR & (Self::FIFO_UNDERRUN_CLR & ((bit as u32) << 10)))
+    }
     /// Clear fifo overrun interrupt flag.
     #[inline]
     pub fn clear_fifo_overrun(self) -> Self {
         Self(self.0 | Self::FIFO_OVERRUN_CLR)
     }
+    /// Set fifo overrun interrupt flag bit.
+    #[inline]
+    pub fn set_fifo_overrun_clr_bit(self, bit: u8) -> Self {
+        Self(self.0 | Self::FIFO_OVERRUN_CLR & (Self::FIFO_OVERRUN_CLR & ((bit as u32) << 9)))
+    }
     /// Clear adc coversion ready interrupt flag.
     #[inline]
     pub fn clear_adc_ready(self) -> Self {
         Self(self.0 | Self::GPADC_RDY_CLR)
+    }
+    /// Set adc coversion ready interrupt flag bit.
+    #[inline]
+    pub fn set_adc_ready_clr_bit(self, bit: u8) -> Self {
+        Self(self.0 | Self::GPADC_RDY_CLR & (Self::GPADC_RDY_CLR & ((bit as u32) << 8)))
     }
     /// Check if fifo underrun interrupt occurs.
     #[inline]
@@ -181,6 +196,11 @@ impl GpadcConfig {
     #[inline]
     pub fn is_fifo_ready(self) -> bool {
         self.0 & Self::FIFO_RDY != 0
+    }
+    /// Set fifo ready bit.
+    #[inline]
+    pub fn set_fifo_ready_bit(self, bit: u8) -> Self {
+        Self(self.0 | Self::FIFO_RDY & (Self::FIFO_RDY & ((bit as u32) << 7)))
     }
     /// Check if adc coversion is ready.
     #[inline]
@@ -201,6 +221,11 @@ impl GpadcConfig {
     #[inline]
     pub fn clear_fifo(self) -> Self {
         Self(self.0 | Self::FIFO_CLR)
+    }
+    /// Set fifo clear bit.
+    #[inline]
+    pub fn set_fifo_clear_bit(self, bit: u8) -> Self {
+        Self(self.0 | Self::FIFO_CLR & (Self::FIFO_CLR & ((bit as u32) << 1)))
     }
     /// Enable dma.
     #[inline]
@@ -516,23 +541,65 @@ impl GpadcCommand {
     }
     /// Set the positive input selection.
     #[inline]
-    pub const fn set_pos_sel(self, pos: u8) -> Self {
-        Self((self.0 & !Self::POS_SEL) | (Self::POS_SEL & ((pos as u32) << 8)))
+    pub const fn set_pos_sel(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::POS_SEL) | (Self::POS_SEL & (((channel as u8) as u32) << 8)))
     }
     /// Get the positive input selection.
     #[inline]
-    pub const fn pos_sel(self) -> u8 {
-        ((self.0 & Self::POS_SEL) >> 8) as u8
+    pub const fn pos_sel(self) -> GpadcChannel {
+        match ((self.0 & Self::POS_SEL) >> 8) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set the negative input selection.
     #[inline]
-    pub const fn set_neg_sel(self, neg: u8) -> Self {
-        Self((self.0 & !Self::NEG_SEL) | (Self::NEG_SEL & ((neg as u32) << 3)))
+    pub const fn set_neg_sel(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::NEG_SEL) | (Self::NEG_SEL & (((channel as u8) as u32) << 3)))
     }
     /// Get the negative input selection.
     #[inline]
-    pub const fn neg_sel(self) -> u8 {
-        ((self.0 & Self::NEG_SEL) >> 3) as u8
+    pub const fn neg_sel(self) -> GpadcChannel {
+        match ((self.0 & Self::NEG_SEL) >> 3) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Start software reset of the adc.
     #[inline]
@@ -1129,65 +1196,191 @@ impl AdcConverationSequence1 {
     const SCAN_POS_1_MASK: u32 = 0x1F << 5;
     const SCAN_POS_0_MASK: u32 = 0x1F << 0;
 
-    /// Set scan position 5.
+    /// Set scan postive position 5.
     #[inline]
-    pub fn set_scan_pos_5(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_5_MASK) | (Self::SCAN_POS_5_MASK & ((pos as u32) << 25)))
+    pub fn set_scan_pos_5(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_5_MASK) | (Self::SCAN_POS_5_MASK & ((channel as u32) << 25)))
     }
-    /// Get scan position 5.
+    /// Get scan postive position 5.
     #[inline]
-    pub fn scan_pos_5(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_5_MASK) >> 25) as u8
+    pub fn scan_pos_5(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_5_MASK) >> 25) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 4.
+    /// Set scan postive position 4.
     #[inline]
-    pub fn set_scan_pos_4(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_4_MASK) | (Self::SCAN_POS_4_MASK & ((pos as u32) << 20)))
+    pub fn set_scan_pos_4(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_4_MASK) | (Self::SCAN_POS_4_MASK & ((channel as u32) << 20)))
     }
-    /// Get scan position 4.
+    /// Get scan postive position 4.
     #[inline]
-    pub fn scan_pos_4(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_4_MASK) >> 20) as u8
+    pub fn scan_pos_4(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_4_MASK) >> 20) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 3.
+    /// Set scan postive position 3.
     #[inline]
-    pub fn set_scan_pos_3(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_3_MASK) | (Self::SCAN_POS_3_MASK & ((pos as u32) << 15)))
+    pub fn set_scan_pos_3(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_3_MASK) | (Self::SCAN_POS_3_MASK & ((channel as u32) << 15)))
     }
-    /// Get scan position 3.
+    /// Get scan postive position 3.
     #[inline]
-    pub fn scan_pos_3(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_3_MASK) >> 15) as u8
+    pub fn scan_pos_3(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_3_MASK) >> 15) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 2.
+    /// Set scan postive position 2.
     #[inline]
-    pub fn set_scan_pos_2(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_2_MASK) | (Self::SCAN_POS_2_MASK & ((pos as u32) << 10)))
+    pub fn set_scan_pos_2(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_2_MASK) | (Self::SCAN_POS_2_MASK & ((channel as u32) << 10)))
     }
-    /// Get scan position 2.
+    /// Get scan postive position 2.
     #[inline]
-    pub fn scan_pos_2(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_2_MASK) >> 10) as u8
+    pub fn scan_pos_2(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_2_MASK) >> 10) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 1.
+    /// Set scan postive position 1.
     #[inline]
-    pub fn set_scan_pos_1(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_1_MASK) | (Self::SCAN_POS_1_MASK & ((pos as u32) << 5)))
+    pub fn set_scan_pos_1(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_1_MASK) | (Self::SCAN_POS_1_MASK & ((channel as u32) << 5)))
     }
-    /// Get scan position 1.
+    /// Get scan postive position 1.
     #[inline]
-    pub fn scan_pos_1(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_1_MASK) >> 5) as u8
+    pub fn scan_pos_1(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_1_MASK) >> 5) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 0.
+    /// Set scan postive position 0.
     #[inline]
-    pub fn set_scan_pos_0(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_0_MASK) | (Self::SCAN_POS_0_MASK & (pos as u32)))
+    pub fn set_scan_pos_0(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_0_MASK) | (Self::SCAN_POS_0_MASK & (channel as u32)))
     }
-    /// Get scan position 0.
+    /// Get scan postive position 0.
     #[inline]
-    pub fn scan_pos_0(self) -> u8 {
-        (self.0 & Self::SCAN_POS_0_MASK) as u8
+    pub fn scan_pos_0(self) -> GpadcChannel {
+        match (self.0 & Self::SCAN_POS_0_MASK) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -1203,65 +1396,197 @@ impl AdcConverationSequence2 {
     const SCAN_POS_7_MASK: u32 = 0x1F << 5;
     const SCAN_POS_6_MASK: u32 = 0x1F << 0;
 
-    /// Set scan position 11.
+    /// Set scan postive position 11.
     #[inline]
-    pub fn set_scan_pos_11(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_11_MASK) | (Self::SCAN_POS_11_MASK & ((pos as u32) << 25)))
+    pub fn set_scan_pos_11(self, channel: GpadcChannel) -> Self {
+        Self(
+            (self.0 & !Self::SCAN_POS_11_MASK)
+                | (Self::SCAN_POS_11_MASK & ((channel as u32) << 25)),
+        )
     }
-    /// Get scan position 11.
+    /// Get scan postive position 11.
     #[inline]
-    pub fn scan_pos_11(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_11_MASK) >> 25) as u8
+    pub fn scan_pos_11(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_11_MASK) >> 25) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 10.
+    /// Set scan postive position 10.
     #[inline]
-    pub fn set_scan_pos_10(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_10_MASK) | (Self::SCAN_POS_10_MASK & ((pos as u32) << 20)))
+    pub fn set_scan_pos_10(self, channel: GpadcChannel) -> Self {
+        Self(
+            (self.0 & !Self::SCAN_POS_10_MASK)
+                | (Self::SCAN_POS_10_MASK & ((channel as u32) << 20)),
+        )
     }
-    /// Get scan position 10.
+    /// Get scan postive position 10.
     #[inline]
-    pub fn scan_pos_10(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_10_MASK) >> 20) as u8
+    pub fn scan_pos_10(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_10_MASK) >> 20) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 9.
+    /// Set scan postive position 9.
     #[inline]
-    pub fn set_scan_pos_9(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_9_MASK) | (Self::SCAN_POS_9_MASK & ((pos as u32) << 15)))
+    pub fn set_scan_pos_9(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_9_MASK) | (Self::SCAN_POS_9_MASK & ((channel as u32) << 15)))
     }
-    /// Get scan position 9.
+    /// Get scan postive position 9.
     #[inline]
-    pub fn scan_pos_9(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_9_MASK) >> 15) as u8
+    pub fn scan_pos_9(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_9_MASK) >> 15) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 8.
+    /// Set scan postive position 8.
     #[inline]
-    pub fn set_scan_pos_8(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_8_MASK) | (Self::SCAN_POS_8_MASK & ((pos as u32) << 10)))
+    pub fn set_scan_pos_8(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_8_MASK) | (Self::SCAN_POS_8_MASK & ((channel as u32) << 10)))
     }
-    /// Get scan position 8.
+    /// Get scan postive position 8.
     #[inline]
-    pub fn scan_pos_8(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_8_MASK) >> 10) as u8
+    pub fn scan_pos_8(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_8_MASK) >> 10) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 7.
+    /// Set scan postive position 7.
     #[inline]
-    pub fn set_scan_pos_7(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_7_MASK) | (Self::SCAN_POS_7_MASK & ((pos as u32) << 5)))
+    pub fn set_scan_pos_7(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_7_MASK) | (Self::SCAN_POS_7_MASK & ((channel as u32) << 5)))
     }
-    /// Get scan position 7.
+    /// Get scan postive position 7.
     #[inline]
-    pub fn scan_pos_7(self) -> u8 {
-        ((self.0 & Self::SCAN_POS_7_MASK) >> 5) as u8
+    pub fn scan_pos_7(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_POS_7_MASK) >> 5) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
-    /// Set scan position 6.
+    /// Set scan postive position 6.
     #[inline]
-    pub fn set_scan_pos_6(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_POS_6_MASK) | (Self::SCAN_POS_6_MASK & (pos as u32)))
+    pub fn set_scan_pos_6(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_POS_6_MASK) | (Self::SCAN_POS_6_MASK & (channel as u32)))
     }
-    /// Get scan position 6.
+    /// Get scan postive position 6.
     #[inline]
-    pub fn scan_pos_6(self) -> u8 {
-        (self.0 & Self::SCAN_POS_6_MASK) as u8
+    pub fn scan_pos_6(self) -> GpadcChannel {
+        match (self.0 & Self::SCAN_POS_6_MASK) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -1279,63 +1604,189 @@ impl AdcConverationSequence3 {
 
     /// Set scan negative position 5.
     #[inline]
-    pub fn set_scan_neg_5(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_5_MASK) | (Self::SCAN_NEG_5_MASK & ((pos as u32) << 25)))
+    pub fn set_scan_neg_5(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_5_MASK) | (Self::SCAN_NEG_5_MASK & ((channel as u32) << 25)))
     }
     /// Get scan negative position 5.
     #[inline]
-    pub fn scan_neg_5(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_5_MASK) >> 25) as u8
+    pub fn scan_neg_5(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_5_MASK) >> 25) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 4.
     #[inline]
-    pub fn set_scan_neg_4(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_4_MASK) | (Self::SCAN_NEG_4_MASK & ((pos as u32) << 20)))
+    pub fn set_scan_neg_4(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_4_MASK) | (Self::SCAN_NEG_4_MASK & ((channel as u32) << 20)))
     }
     /// Get scan negative position 4.
     #[inline]
-    pub fn scan_neg_4(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_4_MASK) >> 20) as u8
+    pub fn scan_neg_4(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_4_MASK) >> 20) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 3.
     #[inline]
-    pub fn set_scan_neg_3(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_3_MASK) | (Self::SCAN_NEG_3_MASK & ((pos as u32) << 15)))
+    pub fn set_scan_neg_3(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_3_MASK) | (Self::SCAN_NEG_3_MASK & ((channel as u32) << 15)))
     }
     /// Get scan negative position 3.
     #[inline]
-    pub fn scan_neg_3(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_3_MASK) >> 15) as u8
+    pub fn scan_neg_3(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_3_MASK) >> 15) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 2.
     #[inline]
-    pub fn set_scan_neg_2(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_2_MASK) | (Self::SCAN_NEG_2_MASK & ((pos as u32) << 10)))
+    pub fn set_scan_neg_2(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_2_MASK) | (Self::SCAN_NEG_2_MASK & ((channel as u32) << 10)))
     }
     /// Get scan negative position 2.
     #[inline]
-    pub fn scan_neg_2(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_2_MASK) >> 10) as u8
+    pub fn scan_neg_2(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_2_MASK) >> 10) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 1.
     #[inline]
-    pub fn set_scan_neg_1(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_1_MASK) | (Self::SCAN_NEG_1_MASK & ((pos as u32) << 5)))
+    pub fn set_scan_neg_1(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_1_MASK) | (Self::SCAN_NEG_1_MASK & ((channel as u32) << 5)))
     }
     /// Get scan negative position 1.
     #[inline]
-    pub fn scan_neg_1(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_1_MASK) >> 5) as u8
+    pub fn scan_neg_1(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_1_MASK) >> 5) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 0.
     #[inline]
-    pub fn set_scan_neg_0(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_0_MASK) | (Self::SCAN_NEG_0_MASK & (pos as u32)))
+    pub fn set_scan_neg_0(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_0_MASK) | (Self::SCAN_NEG_0_MASK & (channel as u32)))
     }
     /// Get scan negative position 0.
     #[inline]
-    pub fn scan_neg_0(self) -> u8 {
-        (self.0 & Self::SCAN_NEG_0_MASK) as u8
+    pub fn scan_neg_0(self) -> GpadcChannel {
+        match (self.0 & Self::SCAN_NEG_0_MASK) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -1353,63 +1804,195 @@ impl AdcConverationSequence4 {
 
     /// Set scan negative position 11.
     #[inline]
-    pub fn set_scan_neg_11(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_11_MASK) | (Self::SCAN_NEG_11_MASK & ((pos as u32) << 25)))
+    pub fn set_scan_neg_11(self, channel: GpadcChannel) -> Self {
+        Self(
+            (self.0 & !Self::SCAN_NEG_11_MASK)
+                | (Self::SCAN_NEG_11_MASK & ((channel as u32) << 25)),
+        )
     }
     /// Get scan negative position 11.
     #[inline]
-    pub fn scan_neg_11(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_11_MASK) >> 25) as u8
+    pub fn scan_neg_11(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_11_MASK) >> 25) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 10.
     #[inline]
-    pub fn set_scan_neg_10(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_10_MASK) | (Self::SCAN_NEG_10_MASK & ((pos as u32) << 20)))
+    pub fn set_scan_neg_10(self, channel: GpadcChannel) -> Self {
+        Self(
+            (self.0 & !Self::SCAN_NEG_10_MASK)
+                | (Self::SCAN_NEG_10_MASK & ((channel as u32) << 20)),
+        )
     }
     /// Get scan negative position 10.
     #[inline]
-    pub fn scan_neg_10(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_10_MASK) >> 20) as u8
+    pub fn scan_neg_10(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_10_MASK) >> 20) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 9.
     #[inline]
-    pub fn set_scan_neg_9(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_9_MASK) | (Self::SCAN_NEG_9_MASK & ((pos as u32) << 15)))
+    pub fn set_scan_neg_9(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_9_MASK) | (Self::SCAN_NEG_9_MASK & ((channel as u32) << 15)))
     }
     /// Get scan negative position 9.
     #[inline]
-    pub fn scan_neg_9(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_9_MASK) >> 15) as u8
+    pub fn scan_neg_9(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_9_MASK) >> 15) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 8.
     #[inline]
-    pub fn set_scan_neg_8(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_8_MASK) | (Self::SCAN_NEG_8_MASK & ((pos as u32) << 10)))
+    pub fn set_scan_neg_8(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_8_MASK) | (Self::SCAN_NEG_8_MASK & ((channel as u32) << 10)))
     }
     /// Get scan negative position 8.
     #[inline]
-    pub fn scan_neg_8(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_8_MASK) >> 10) as u8
+    pub fn scan_neg_8(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_8_MASK) >> 10) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 7.
     #[inline]
-    pub fn set_scan_neg_7(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_7_MASK) | (Self::SCAN_NEG_7_MASK & ((pos as u32) << 5)))
+    pub fn set_scan_neg_7(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_7_MASK) | (Self::SCAN_NEG_7_MASK & ((channel as u32) << 5)))
     }
     /// Get scan negative position 7.
     #[inline]
-    pub fn scan_neg_7(self) -> u8 {
-        ((self.0 & Self::SCAN_NEG_7_MASK) >> 5) as u8
+    pub fn scan_neg_7(self) -> GpadcChannel {
+        match ((self.0 & Self::SCAN_NEG_7_MASK) >> 5) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
     /// Set scan negative position 6.
     #[inline]
-    pub fn set_scan_neg_6(self, pos: u8) -> Self {
-        Self((self.0 & !Self::SCAN_NEG_6_MASK) | (Self::SCAN_NEG_6_MASK & (pos as u32)))
+    pub fn set_scan_neg_6(self, channel: GpadcChannel) -> Self {
+        Self((self.0 & !Self::SCAN_NEG_6_MASK) | (Self::SCAN_NEG_6_MASK & (channel as u32)))
     }
     /// Get scan negative position 6.
     #[inline]
-    pub fn scan_neg_6(self) -> u8 {
-        (self.0 & Self::SCAN_NEG_6_MASK) as u8
+    pub fn scan_neg_6(self) -> GpadcChannel {
+        match (self.0 & Self::SCAN_NEG_6_MASK) as u8 {
+            0 => GpadcChannel::Channel0,
+            1 => GpadcChannel::Channel1,
+            2 => GpadcChannel::Channel2,
+            3 => GpadcChannel::Channel3,
+            4 => GpadcChannel::Channel4,
+            5 => GpadcChannel::Channel5,
+            6 => GpadcChannel::Channel6,
+            7 => GpadcChannel::Channel7,
+            8 => GpadcChannel::Channel8,
+            9 => GpadcChannel::Channel9,
+            10 => GpadcChannel::Channel10,
+            11 => GpadcChannel::Channel11,
+            12 => GpadcChannel::ChannelDacA,
+            13 => GpadcChannel::ChannelDacB,
+            14 => GpadcChannel::ChannelTSENP,
+            15 => GpadcChannel::ChannelTSENN,
+            16 => GpadcChannel::ChannelVRef,
+            18 => GpadcChannel::ChannelVBatHalf,
+            23 => GpadcChannel::ChannelVGND,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -1448,32 +2031,32 @@ impl GpadcInterruptState {
     /// Enable positive saturation interrupt.
     #[inline]
     pub fn enable_pos_satur_interrupt(self) -> Self {
-        Self(self.0 & !Self::POS_SATUR)
+        Self(self.0 & !Self::POS_SATUR_MASK)
     }
     /// Disable positive saturation interrupt.
     #[inline]
     pub fn disable_pos_satur_interrupt(self) -> Self {
-        Self(self.0 | Self::POS_SATUR)
+        Self(self.0 | Self::POS_SATUR_MASK)
     }
     /// Check if positive saturation interrupt is enabled.
     #[inline]
     pub fn is_pos_satur_interrupt_enabled(self) -> bool {
-        self.0 & Self::POS_SATUR == 0
+        self.0 & Self::POS_SATUR_MASK == 0
     }
     /// Enable negative saturation interrupt.
     #[inline]
     pub fn enable_neg_satur_interrupt(self) -> Self {
-        Self(self.0 & !Self::NEG_SATUR)
+        Self(self.0 & !Self::NEG_SATUR_MASK)
     }
     /// Disable negative saturation interrupt.
     #[inline]
     pub fn disable_neg_satur_interrupt(self) -> Self {
-        Self(self.0 | Self::NEG_SATUR)
+        Self(self.0 | Self::NEG_SATUR_MASK)
     }
     /// Check if negative saturation interrupt is enabled.
     #[inline]
     pub fn is_neg_satur_interrupt_enabled(self) -> bool {
-        self.0 & Self::NEG_SATUR == 0
+        self.0 & Self::NEG_SATUR_MASK == 0
     }
     /// Clear positive saturation interrupt.
     #[inline]
@@ -1488,12 +2071,12 @@ impl GpadcInterruptState {
     /// Check if positive saturation interrupt occurs.
     #[inline]
     pub fn if_pos_satur_interrupt_occurs(self) -> bool {
-        self.0 & Self::POS_SATUR_MASK != 0
+        self.0 & Self::POS_SATUR != 0
     }
     /// Check if negative saturation interrupt occurs.
     #[inline]
     pub fn if_neg_satur_interrupt_occurs(self) -> bool {
-        self.0 & Self::NEG_SATUR_MASK != 0
+        self.0 & Self::NEG_SATUR != 0
     }
 }
 
@@ -1582,6 +2165,8 @@ pub enum GpadcTsenMode {
     ExternalDiode = 1,
 }
 
+/// Adc coniguration structure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AdcConfig {
     /// Clock divider for the adc.
     clk_div: GpadcClkDivider,
@@ -1595,7 +2180,10 @@ pub struct AdcConfig {
     diff_en: bool,
     /// Enable or disable the adc continuous conversion mode.
     continuous_conv_en: bool,
+    /// Enable or disable the adc dma mode.
+    dma_en: bool,
 }
+
 impl Default for AdcConfig {
     #[inline]
     fn default() -> Self {
@@ -1606,6 +2194,7 @@ impl Default for AdcConfig {
             scan_en: false,
             diff_en: false,
             continuous_conv_en: true,
+            dma_en: false,
         }
     }
 }
@@ -1641,133 +2230,387 @@ impl AdcConfig {
         self.scan_en = false;
         self
     }
-    /// Check if scan mode is enabled.
+    /// Enable differential mode for the adc.
     #[inline]
     pub fn enable_diff_mode(mut self) -> Self {
         self.diff_en = true;
         self
     }
-    /// Check if scan mode is enabled.
+    /// Disable differential mode for the adc.
     #[inline]
     pub fn disable_diff_mode(mut self) -> Self {
         self.diff_en = false;
         self
     }
-    /// Check if scan mode is enabled.
+    /// Enable continuous covertion mode for the adc.
     #[inline]
     pub fn enable_continuous_conv(mut self) -> Self {
         self.continuous_conv_en = true;
         self
     }
-    /// Check if scan mode is enabled.
+    /// Disable continuous covertion mode for the adc.
     #[inline]
     pub fn disable_continuous_conv(mut self) -> Self {
         self.continuous_conv_en = false;
         self
     }
-}
-
-pub struct Adc<ADC> {
-    adc: ADC,
-}
-
-impl<ADC: Deref<Target = RegisterBlock>> Adc<ADC> {
+    /// Enable dma mode for the adc.
     #[inline]
-    pub fn new(adc: ADC, config: AdcConfig) -> Self {
-        unsafe {
-            adc.gpadc_command.modify(|v| v.disable_global());
-            adc.gpadc_command
-                .modify(|v| v.enable_global().start_software_reset());
+    pub fn enable_dma(mut self) -> Self {
+        self.dma_en = true;
+        self
+    }
+    /// Disable dma mode for the adc.
+    #[inline]
+    pub fn disable_dma(mut self) -> Self {
+        self.dma_en = false;
+        self
+    }
+}
 
-            for _ in 0..8 {
-                core::arch::asm!("nop");
+/// Adc command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AdcCommmand {
+    ClearFifo,
+    VbatEn,
+}
+
+/// Adc channels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AdcChannels {
+    pub pos_ch: GpadcChannel,
+    pub neg_ch: GpadcChannel,
+}
+
+/// Dac coniguration structure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DacConfig {
+}
+
+pub struct Gpip<G>
+where
+    G: Deref<Target = RegisterBlock>,
+{
+    gpip: G,
+    adc_config: Option<AdcConfig>,
+    adc_calibration_complete: bool,
+    dac_config: Option<DacConfig>,
+    dac_calibration_complete: bool,
+}
+
+impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
+    #[inline]
+    pub fn new(gpip: G, adc_config: Option<AdcConfig>, dac_config: Option<DacConfig>) -> Self {
+        if adc_config.is_some() {
+            let config = adc_config.unwrap();
+            unsafe {
+                gpip.gpadc_command.modify(|v| v.disable_global());
+                gpip.gpadc_command
+                    .modify(|v| v.enable_global().start_software_reset());
+    
+                for _ in 0..8 {
+                    core::arch::asm!("nop");
+                }
+    
+                gpip.gpadc_command.modify(|v| v.stop_software_reset());
+    
+                gpip.gpadc_config_1.write({
+                    let v = GpadcConfig1(0)
+                        .set_v18_sel(2)
+                        .set_v11_sel(1)
+                        .set_clk_div_ratio(config.clk_div)
+                        .set_res_sel(config.resolution);
+    
+                    #[cfg(feature = "bl702")]
+                    {
+                        let v = v.enable_lowv_det().enable_vcm_hyst_sel().enable_vcm_sel();
+                    }
+    
+                    let v = if config.scan_en {
+                        v.enable_scan().enable_clk_ana_inv()
+                    } else {
+                        v.disable_scan().disable_clk_ana_inv()
+                    };
+                    let v = if config.continuous_conv_en {
+                        v.enable_continuous_conv()
+                    } else {
+                        v.disable_continuous_conv()
+                    };
+                    v
+                });
+    
+                for _ in 0..8 {
+                    core::arch::asm!("nop");
+                }
+    
+                gpip.gpadc_config_2.write({
+                    let v = GpadcConfig2(0)
+                        .set_dly_sel(2)
+                        .enable_pga()
+                        .set_pga1_gain(1)
+                        .set_pga_os_cal(8)
+                        .set_chop_mode(2) // Vref AZ and PGA chop on.
+                        .set_pga_vcm(1) // PGA output common mode control 1.2V.
+                        .set_vref_sel(matches!(config.vref, GpadcVref::V2p0));
+    
+                    #[cfg(feature = "bl702")]
+                    let v = v.set_pga2_gain(0);
+                    #[cfg(not(feature = "bl702"))]
+                    let v = v.set_pga2_gain(1);
+    
+                    if config.diff_en {
+                        v.enable_diff_mode()
+                    } else {
+                        v.disable_diff_mode()
+                    }
+                });
+    
+                gpip.gpadc_command.modify(|v| {
+                    // Mic2 diff enable.
+                    let v = v.enable_mic2_diff();
+                    if config.diff_en {
+                        v.unset_neg_gnd()
+                    } else {
+                        v.set_neg_gnd()
+                    }
+                });
+    
+                // Set calibration offset.
+                gpip.gpadc_define.modify(|v| v.set_os_cal_data(0));
+                gpip.gpadc_config.modify(|v| {
+                    let v = v
+                        .disable_fifo_overrun()
+                        .disable_fifo_underrun()
+                        .disable_adc_ready()
+                        .clear_fifo_overrun()
+                        .clear_fifo_underrun()
+                        .clear_adc_ready()
+                        .clear_fifo()
+                        // Set this bit to 0.
+                        .set_fifo_threshold(GpadcFifoThreshold::OneData)
+                        .disable_dma();
+                    #[cfg(feature = "bl702")]
+                    let v = v.disable_fifo_ready().set_fifo_ready_bit(1);
+                    v
+                });
+                gpip.gpadc_config.modify(|v| {
+                    v.set_fifo_underrun_clr_bit(0)
+                        .set_fifo_overrun_clr_bit(0)
+                        .set_adc_ready_clr_bit(0)
+                        .set_fifo_clear_bit(0)
+                });
+                gpip.gpadc_interrupt_state.modify(|v| {
+                    v.disable_neg_satur_interrupt()
+                        .disable_pos_satur_interrupt()
+                });
+    
+                // TODO: calibrate
+    
+                gpip.gpadc_config.modify(|val| {
+                    if config.dma_en {
+                        val.enable_dma()
+                    } else {
+                        val.disable_dma()
+                    }
+                });
             }
-
-            adc.gpadc_command.modify(|v| v.stop_software_reset());
-
-            adc.gpadc_config_1.modify(|v| {
-                let v = v.set_v18_sel(2)
-                    .set_v11_sel(1)
-                    .set_clk_div_ratio(config.clk_div)
-                    .set_res_sel(config.resolution);
-
-                #[cfg(feature = "bl702")]{
-                    let v = v.enable_lowv_det()
-                        .enable_vcm_hyst_sel()
-                        .enable_vcm_sel();
-                }
-                
-                let v = if config.scan_en {
-                    v.enable_scan()
-                } else {
-                    v.disable_scan()
-                };
-                let v = if config.continuous_conv_en {
-                    v.enable_continuous_conv()
-                } else {
-                    v.disable_continuous_conv()
-                };
-                v
-            });
-
-            for _ in 0..8 {
-                core::arch::asm!("nop");
-            }
-
-            adc.gpadc_config_2.modify(|v| {
-                let v = v.set_dly_sel(2)
-                    .enable_pga()
-                    .set_pga1_gain(1)
-                    .set_pga_os_cal(8)
-                    .set_chop_mode(2) // Vref AZ and PGA chop on.
-                    .set_pga_vcm(1) // PGA output common mode control 1.2V.
-                    .set_vref_sel(matches!(config.vref, GpadcVref::V2p0));
-
-                #[cfg(feature = "bl702")]
-                let v = v.set_pga2_gain(0);
-                #[cfg(not(feature = "bl702"))]
-                let v = v.set_pga2_gain(1);
-
-                if config.diff_en {
-                    v.enable_diff_mode()
-                } else {
-                    v.disable_diff_mode()
-                }
-            });
-
-            adc.gpadc_command.modify(|v| {
-                // Mic2 diff enable.
-                let v = v.enable_mic2_diff();
-                if config.diff_en {
-                    v.unset_neg_gnd()
-                } else {
-                    v.set_neg_gnd()
-                }
-            });
-            
-            // Set calibration offset.
-            adc.gpadc_define.modify(|v| v.set_os_cal_data(0));
-            adc.gpadc_config.modify(|v| {
-                let v = v.disable_fifo_overrun()
-                    .disable_fifo_underrun()
-                    .disable_adc_ready()
-                    .clear_fifo_overrun()
-                    .clear_fifo_underrun()
-                    .clear_adc_ready();
-                #[cfg(feature = "bl702")]
-                let v = v.disable_fifo_ready();
-                v
-            });
         }
-        Self { adc }
+        
+        Self {
+            gpip,
+            adc_config,
+            adc_calibration_complete: false,
+            dac_config,
+            dac_calibration_complete: false,
+        }
+    }
+
+    /// Calibrate adc (if adc is already calibrated, nothing will be done).
+    #[inline]
+    pub fn adc_calibrate(&mut self) {}
+
+    /// Feature control.
+    #[inline]
+    pub fn adc_feature_control(&mut self, cmd: AdcCommmand, vbat_en: bool) {
+        match cmd {
+            AdcCommmand::ClearFifo => unsafe {
+                self.gpip.gpadc_config
+                    .modify(|val| val.disable_dma().clear_fifo());
+                self.gpip.gpadc_config.modify(|val| {
+                    if self.adc_config.unwrap().dma_en {
+                        val.enable_dma()
+                    } else {
+                        val.disable_dma()
+                    }
+                });
+            },
+            AdcCommmand::VbatEn => unsafe {
+                self.gpip.gpadc_config_2.modify(|val| {
+                    if vbat_en {
+                        val.enable_vbat()
+                    } else {
+                        val.disable_vbat()
+                    }
+                });
+            },
+        }
+    }
+
+    /// Configure adc channels.
+    #[inline]
+    pub fn adc_channel_config(&mut self, channels: &[AdcChannels]) {
+        if !self.adc_config.unwrap().scan_en {
+            if channels.len() > 1 {
+                panic!("Too many adc channels.")
+            }
+
+            unsafe {
+                self.gpip.gpadc_command.modify(|val| {
+                    val.set_pos_sel(channels[0].pos_ch)
+                        .set_neg_sel(channels[0].neg_ch)
+                });
+            }
+        }
+    }
+
+    /// Start adc coversion.
+    #[inline]
+    pub fn adc_start_conversion(&mut self) {
+        unsafe {
+            self.gpip.gpadc_command.modify(|val| val.stop_conversion());
+
+            sleep(100);
+
+            self.gpip.gpadc_command.modify(|val| val.start_conversion());
+        }
+    }
+
+    /// Stop adc coversion.
+    #[inline]
+    pub fn adc_stop_conversion(&mut self) {
+        unsafe {
+            self.gpip.gpadc_command.modify(|val| val.stop_conversion());
+        }
+    }
+
+    /// Init internal temperature sensor.
+    #[inline]
+    pub fn adc_tsen_init(&mut self, external_ts: bool) {
+        unsafe {
+            self.gpip.gpadc_command.modify(|val| {
+                let val = val.disable_dwa().disable_chip_sen_pu();
+                cfg_if! {
+                    if #[cfg(any(feature = "bl702", feature = "bl602"))] {
+                        val.disable_sensor_test_v1().set_sensor_v1(0)
+                    } else {
+                        val.disable_sensor_test_v2().set_sensor_v2(0)
+                    }
+                }
+            });
+            self.gpip.gpadc_config_2.modify(|val| {
+                val.disable_tsvbe_low()
+                    .disable_test()
+                    .set_test_sel(0)
+                    .disable_pga_vcmi()
+                    .set_chop_mode(1)
+                    .set_dly_sel(2)
+                    .enable_ts()
+                    .set_tsext_sel(external_ts)
+                    .set_pga_vcm(1)
+                    .set_pga_os_cal(0)
+            });
+            self.gpip.gpadc_config_1.modify(|val| val.disable_dither());
+            self.gpip.gpadc_command.modify(|val| val.enable_mic2_diff());
+        }
+    }
+
+    /// Get number of adc completed conversions.
+    #[inline]
+    pub fn adc_get_complete_num(&self) -> u16 {
+        self.gpip.gpadc_config.read().fifo_data_count()
+    }
+
+    /// Get adc raw data.
+    #[inline]
+    pub fn adc_get_raw_data(&self) -> u32 {
+        self.gpip.gpadc_dma_rdata.read().dma_rdata()
+    }
+
+    /// Get internal temperature sensor's temperature.
+    pub fn adc_get_tsen_temp(&mut self) -> f32 {
+        unsafe {
+            self.gpip.gpadc_config.modify(|val| {
+                val.set_fifo_threshold(GpadcFifoThreshold::OneData)
+                    .clear_fifo()
+            });
+            self.gpip
+                .gpadc_config_2
+                .modify(|val| val.disable_tsvbe_low());
+        }
+        self.adc_start_conversion();
+
+        let mut sum = 0;
+        for _ in 0..8 {
+            while self.adc_get_complete_num() == 0 {
+                core::hint::spin_loop();
+            }
+            let _ = self.adc_get_raw_data();
+        }
+        for _ in 0..16 {
+            while self.adc_get_complete_num() == 0 {
+                core::hint::spin_loop();
+            }
+            sum += self.adc_get_raw_data() & 0xFFFF;
+        }
+        self.adc_stop_conversion();
+
+        let v0 = (sum as f32 + 8.0) / 16.0;
+
+        unsafe {
+            self.gpip.gpadc_config.modify(|val| val.clear_fifo());
+            self.gpip
+                .gpadc_config_2
+                .modify(|val| val.disable_tsvbe_low());
+        }
+        self.adc_start_conversion();
+
+        sum = 0;
+        for _ in 0..8 {
+            while self.adc_get_complete_num() == 0 {
+                core::hint::spin_loop();
+            }
+            let _ = self.adc_get_raw_data();
+        }
+        for _ in 0..16 {
+            while self.adc_get_complete_num() == 0 {
+                core::hint::spin_loop();
+            }
+            sum += self.adc_get_raw_data() & 0xFFFF;
+        }
+        self.adc_stop_conversion();
+
+        let v1 = (sum as f32 + 8.0) / 16.0;
+
+        let tsen_offset = 0.0;
+        if v0 > v1 {
+            ((v0 - v1) - tsen_offset) / 7.753
+        } else {
+            ((v1 - v0) - tsen_offset) / 7.753
+        }
     }
 
     #[inline]
-    pub fn free(self) -> ADC {
+    pub fn free(self) -> G {
         unsafe {
-            self.adc.gpadc_command.modify(|v| v.disable_global());
+            self.gpip.gpadc_command.modify(|v| v.disable_global());
         }
-        self.adc
+        self.gpip
+    }
+}
+
+fn sleep(n: u32) {
+    for _ in 0..n * 125 {
+        unsafe { core::arch::asm!("nop") }
     }
 }
 
@@ -1777,7 +2620,7 @@ mod tests {
     use core::mem::offset_of;
 
     #[test]
-    fn struct_gpadc_config_functions() {
+    fn struct_gpadc_offset_functions() {
         assert_eq!(offset_of!(RegisterBlock, gpadc_config), 0x0);
         assert_eq!(offset_of!(RegisterBlock, gpadc_dma_rdata), 0x4);
         assert_eq!(offset_of!(RegisterBlock, gpadc_pir_train), 0x20);

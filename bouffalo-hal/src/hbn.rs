@@ -32,7 +32,7 @@ pub struct RegisterBlock {
     /// Brown-out reset function configuration
     pub bor_config: RW<u32>,
     /// Global hibernate configuration
-    pub global: GLOBAL,
+    pub global: RW<Global>,
     /// Static Random-Access Memory hibernate control
     pub sram: RW<u32>,
     /// Always-on pad control register 0
@@ -50,34 +50,17 @@ pub struct RegisterBlock {
     pub rtc_control_1: RW<u32>,
 }
 
-/// Global hibernate configuration register.
-#[allow(non_camel_case_types)]
-#[repr(transparent)]
-pub struct GLOBAL(UnsafeCell<u32>);
-
 /// Configuration structure for hibernation global register.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(transparent)]
 pub struct Global(u32);
-
-impl GLOBAL {
-    /// Read global configuration.
-    #[inline]
-    pub fn read(&self) -> Global {
-        Global(unsafe { self.0.get().read_volatile() })
-    }
-    /// Write global configuration.
-    #[inline]
-    pub fn write(&self, val: Global) {
-        unsafe { self.0.get().write_volatile(val.0) }
-    }
-}
 
 impl Global {
     const ROOT_CLOCK_SOURCE_1: u32 = 1 << 0;
     const ROOT_CLOCK_SOURCE_2: u32 = 1 << 1;
     const UART_CLOCK_SOURCE_1: u32 = 1 << 2;
     const F32K_SELECT: u32 = 0x3 << 3;
+    const ROOT_CLK_SEL: u32 = 0x1 << 6;
     const RESET_EVENT: u32 = 0x3f << 7;
     const CLEAR_RESET_EVENT: u32 = 1 << 13;
     const UART_CLOCK_SOURCE_2: u32 = 1 << 15;
@@ -122,6 +105,20 @@ impl Global {
             0 => F32kSource::RC32K,
             1 => F32kSource::Xtal32K,
             2 => F32kSource::Dig32K,
+            _ => unreachable!(),
+        }
+    }
+    /// Set root clock source.
+    #[inline]
+    pub const fn set_root_clock(self, val: RootClockSource) -> Self {
+        Self((self.0 & !Self::ROOT_CLK_SEL) | (val as u32))
+    }
+    /// Get root clock source.
+    #[inline]
+    pub const fn root_clock(self) -> RootClockSource {
+        match (self.0 & Self::ROOT_CLK_SEL) >> 6 {
+            0 => RootClockSource::RC32M,
+            1 => RootClockSource::Xtal,
             _ => unreachable!(),
         }
     }
@@ -205,6 +202,16 @@ impl Global {
             _ => unreachable!(),
         }
     }
+}
+
+/// Root clock source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum RootClockSource {
+    /// Internal 32-MHz RC oscillator
+    RC32M = 0,
+    /// External crystal oscillator
+    Xtal = 1,
 }
 
 /// Root clock source 1.

@@ -5,26 +5,29 @@ use volatile_register::{RO, RW, WO};
 /// Global configuration registers.
 #[repr(C)]
 pub struct RegisterBlock {
-    _reserved0: [u8; 0x150],
+    _reserved0: [u8; 0x90],
+    /// System config 0 register.
+    pub sys_config0: RW<SysConfig0>,
+    _reserved1: [u8; 0xba],
     /// Universal Asynchronous Receiver/Transmitter clock and mode configurations.
     pub uart_config: RW<UartConfig>,
     /// Universal Asynchronous Receiver/Transmitter signal multiplexer.
     pub uart_mux_group: [RW<UartMuxGroup>; 2],
-    _reserved1: [u8; 0x24],
+    _reserved2: [u8; 0x24],
     /// Inter-Integrated Circuit configuration register.
     pub i2c_config: RW<I2cConfig>,
-    _reserved2: [u8; 0x2c],
+    _reserved3: [u8; 0x2c],
     /// Serial Peripheral Interface configuration register.
     pub spi_config: RW<SpiConfig>,
-    _reserved3: [u8; 0x1c],
+    _reserved4: [u8; 0x1c],
     /// Pulse Width Modulation configuration register.
     pub pwm_config: RW<PwmConfig>,
-    _reserved4: [u8; 0x25c],
+    _reserved5: [u8; 0x25c],
     /// SDH configuration register.
     pub sdh_config: RW<SdhConfig>,
-    _reserved5: [u8; 0xdd],
+    _reserved6: [u8; 0xdd],
     pub param_config: RW<ParamConfig>,
-    _reserved6: [u8; 0x6c],
+    _reserved7: [u8; 0x6c],
     /// Clock generation configuration 0.
     pub clock_config_0: RW<ClockConfig0>,
     /// Clock generation configuration 1.
@@ -33,22 +36,146 @@ pub struct RegisterBlock {
     pub clock_config_2: RW<ClockConfig2>,
     /// Clock generation configuration 3.
     pub clock_config_3: RW<ClockConfig3>,
-    _reserved7: [u8; 0x140],
+    _reserved8: [u8; 0x140],
     /// LDO12UHS config.
     pub ldo12uhs_config: RW<Ldo12uhsConfig>,
-    _reserved8: [u8; 0x1f0],
+    _reserved9: [u8; 0x1f0],
     /// Generic Purpose Input/Output config.
     pub gpio_config: [RW<GpioConfig>; 46],
-    _reserved9: [u8; 0x148],
+    _reserved10: [u8; 0x148],
     /// Read value from Generic Purpose Input/Output pads.
     pub gpio_input: [RO<u32>; 2],
-    _reserved10: [u8; 0x18],
+    _reserved11: [u8; 0x18],
     /// Write value to Generic Purpose Input/Output pads.
     pub gpio_output: [RW<u32>; 2],
     /// Set pin output value to high.
     pub gpio_set: [WO<u32>; 2],
     /// Clear pin output value to low.
     pub gpio_clear: [WO<u32>; 2],
+}
+
+/// Root clock selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RootClkSel {
+    Rc32M,
+    Xtal,
+    Dll,
+}
+
+/// System config register.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct SysConfig0(u32);
+
+impl SysConfig0 {
+    const BCLK_DIV: u32 = 0xFF << 16;
+    const HCLK_DIV: u32 = 0xFF << 8;
+    const HBN_ROOT_CLK_SEL: u32 = 0x3 << 6;
+    const BCLK_EN: u32 = 0x1 << 3;
+    const HCLK_EN: u32 = 0x1 << 2;
+    const FCLK_EN: u32 = 0x1 << 1;
+    const PLL_EN: u32 = 0x1 << 0;
+
+    /// Set bus clock divider.
+    #[inline]
+    pub const fn set_bus_clk_div(self, div: u8) -> Self {
+        Self((self.0 & !Self::BCLK_DIV) | (Self::BCLK_DIV & ((div as u32) << 16)))
+    }
+    /// Get bus clock divider.
+    #[inline]
+    pub const fn bus_clk_div(self) -> u8 {
+        ((self.0 & Self::BCLK_DIV) >> 16) as u8
+    }
+    /// Set cpu clock divider.
+    #[inline]
+    pub const fn set_cpu_clk_div(self, div: u8) -> Self {
+        Self((self.0 & !Self::HCLK_DIV) | (Self::HCLK_DIV & ((div as u32) << 8)))
+    }
+    /// Get cpu clock divider.
+    #[inline]
+    pub const fn cpu_clk_div(self) -> u8 {
+        ((self.0 & Self::HCLK_DIV) >> 8) as u8
+    }
+    /// Set root clock selection.
+    #[inline]
+    pub const fn set_root_clk_sel(self, sel: RootClkSel) -> Self {
+        let value = match sel {
+            RootClkSel::Rc32M => 0,
+            RootClkSel::Xtal => 1,
+            RootClkSel::Dll => 2,
+        };
+        Self((self.0 & !Self::HBN_ROOT_CLK_SEL) | ((value << 6) & Self::HBN_ROOT_CLK_SEL))
+    }
+    /// Get root clock selection.
+    #[inline]
+    pub const fn root_clk_sel(self) -> RootClkSel {
+        match (self.0 & Self::HBN_ROOT_CLK_SEL) >> 6 {
+            0 => RootClkSel::Rc32M,
+            1 => RootClkSel::Xtal,
+            2 | 3 => RootClkSel::Dll,
+            _ => unreachable!(),
+        }
+    }
+    /// Enable bus clock
+    #[inline]
+    pub const fn enable_bclk(self) -> Self {
+        Self(self.0 | Self::BCLK_EN)
+    }
+    /// Disable bus clock
+    #[inline]
+    pub const fn disable_bclk(self) -> Self {
+        Self(self.0 & !Self::BCLK_EN)
+    }
+    /// Check if bus clock is enabled.
+    #[inline]
+    pub const fn is_bclk_enabled(self) -> bool {
+        (self.0 & Self::BCLK_EN) != 0
+    }
+    /// Enable cpu clock
+    #[inline]
+    pub const fn enable_hclk(self) -> Self {
+        Self(self.0 | Self::HCLK_EN)
+    }
+    /// Disable cpu clock
+    #[inline]
+    pub const fn disable_hclk(self) -> Self {
+        Self(self.0 & !Self::HCLK_EN)
+    }
+    /// Check if cpu clock is enabled.
+    #[inline]
+    pub const fn is_hclk_enabled(self) -> bool {
+        (self.0 & Self::HCLK_EN) != 0
+    }
+    /// Enable fclk.
+    #[inline]
+    pub const fn enable_fclk(self) -> Self {
+        Self(self.0 | Self::FCLK_EN)
+    }
+    /// Disable fclk.
+    #[inline]
+    pub const fn disable_fclk(self) -> Self {
+        Self(self.0 & !Self::FCLK_EN)
+    }
+    /// Check if fclk is enabled.
+    #[inline]
+    pub const fn is_fclk_enabled(self) -> bool {
+        (self.0 & Self::FCLK_EN) != 0
+    }
+    /// Enable fclk.
+    #[inline]
+    pub const fn enable_pll(self) -> Self {
+        Self(self.0 | Self::PLL_EN)
+    }
+    /// Disable fclk.
+    #[inline]
+    pub const fn disable_pll(self) -> Self {
+        Self(self.0 & !Self::PLL_EN)
+    }
+    /// Check if PLL is enabled.
+    #[inline]
+    pub const fn is_pll_enabled(self) -> bool {
+        (self.0 & Self::PLL_EN) != 0
+    }
 }
 
 /// Universal Asynchronous Receiver/Transmitter clock and mode configuration.
@@ -453,7 +580,7 @@ impl ClockConfig0 {
     const DMA: u32 = 0x1 << 3;
     // const SEC: u32 = 0x1 << 2;
     // const SDU: u32 = 0x1 << 1;
-    // const CPU: u32 = 0x1;
+    // const cpu: u32 = 0x1;
 
     /// Enable clock gate for Direct Memory Access controller.
     #[inline]
@@ -934,8 +1061,8 @@ mod tests {
 
     use super::{
         ClockConfig1, Drive, Function, GpioConfig, I2cClockSource, I2cConfig, InterruptMode, Mode,
-        ParamConfig, Pull, PwmConfig, PwmSignal0, PwmSignal1, RegisterBlock, SdhConfig, SpiConfig,
-        UartConfig, UartMuxGroup, UartSignal,
+        ParamConfig, Pull, PwmConfig, PwmSignal0, PwmSignal1, RegisterBlock, RootClkSel, SdhConfig,
+        SpiConfig, SysConfig0, UartConfig, UartMuxGroup, UartSignal,
     };
     use core::mem::offset_of;
 
@@ -958,6 +1085,66 @@ mod tests {
         assert_eq!(offset_of!(RegisterBlock, gpio_output), 0xae4);
         assert_eq!(offset_of!(RegisterBlock, gpio_set), 0xaec);
         assert_eq!(offset_of!(RegisterBlock, gpio_clear), 0xaf4);
+    }
+
+    #[test]
+    fn struct_sys_config0_functions() {
+        let mut val = SysConfig0(0x0);
+
+        val = val.set_bus_clk_div(0xFF);
+        assert_eq!(val.bus_clk_div(), 0xFF);
+        assert_eq!(val.0, 0x00FF0000);
+
+        val = SysConfig0(0x0);
+        val = val.set_cpu_clk_div(0xFF);
+        assert_eq!(val.cpu_clk_div(), 0xFF);
+        assert_eq!(val.0, 0x0000FF00);
+
+        val = SysConfig0(0x0);
+        val = val.set_root_clk_sel(RootClkSel::Xtal);
+        assert_eq!(val.root_clk_sel(), RootClkSel::Xtal);
+        assert_eq!(val.0, 0x00000040);
+
+        val = SysConfig0(0x0);
+        val = val.set_root_clk_sel(RootClkSel::Dll);
+        assert_eq!(val.root_clk_sel(), RootClkSel::Dll);
+        assert_eq!(val.0, 0x00000080);
+
+        val = SysConfig0(0x0);
+        val = val.enable_bclk();
+        assert!(val.is_bclk_enabled());
+        assert_eq!(val.0, 0x00000008);
+
+        val = val.disable_bclk();
+        assert!(!val.is_bclk_enabled());
+        assert_eq!(val.0, 0x00000000);
+
+        val = SysConfig0(0x0);
+        val = val.enable_hclk();
+        assert!(val.is_hclk_enabled());
+        assert_eq!(val.0, 0x00000004);
+
+        val = val.disable_hclk();
+        assert!(!val.is_hclk_enabled());
+        assert_eq!(val.0, 0x00000000);
+
+        val = SysConfig0(0x0);
+        val = val.enable_fclk();
+        assert!(val.is_fclk_enabled());
+        assert_eq!(val.0, 0x00000002);
+
+        val = val.disable_fclk();
+        assert!(!val.is_fclk_enabled());
+        assert_eq!(val.0, 0x00000000);
+
+        val = SysConfig0(0x0);
+        val = val.enable_pll();
+        assert!(val.is_pll_enabled());
+        assert_eq!(val.0, 0x00000001);
+
+        val = val.disable_pll();
+        assert!(!val.is_pll_enabled());
+        assert_eq!(val.0, 0x00000000);
     }
 
     #[test]
