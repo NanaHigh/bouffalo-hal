@@ -8,26 +8,29 @@ pub struct RegisterBlock {
     _reserved0: [u8; 0x90],
     /// System config 0 register.
     pub sys_config0: RW<SysConfig0>,
-    _reserved1: [u8; 0xba],
+    _reserved1: [u8; 0x7c],
+    /// Analog-to-Digital Converter configuration 0 register.
+    pub adc_config0: RW<AdcConfig0>,
+    _reserved2: [u8; 0x3C],
     /// Universal Asynchronous Receiver/Transmitter clock and mode configurations.
     pub uart_config: RW<UartConfig>,
     /// Universal Asynchronous Receiver/Transmitter signal multiplexer.
     pub uart_mux_group: [RW<UartMuxGroup>; 2],
-    _reserved2: [u8; 0x24],
+    _reserved3: [u8; 0x24],
     /// Inter-Integrated Circuit configuration register.
     pub i2c_config: RW<I2cConfig>,
-    _reserved3: [u8; 0x2c],
+    _reserved4: [u8; 0x2c],
     /// Serial Peripheral Interface configuration register.
     pub spi_config: RW<SpiConfig>,
-    _reserved4: [u8; 0x1c],
+    _reserved5: [u8; 0x1c],
     /// Pulse Width Modulation configuration register.
     pub pwm_config: RW<PwmConfig>,
-    _reserved5: [u8; 0x25c],
+    _reserved6: [u8; 0x25c],
     /// SDH configuration register.
     pub sdh_config: RW<SdhConfig>,
-    _reserved6: [u8; 0xdd],
+    _reserved7: [u8; 0xdd],
     pub param_config: RW<ParamConfig>,
-    _reserved7: [u8; 0x6c],
+    _reserved8: [u8; 0x6c],
     /// Clock generation configuration 0.
     pub clock_config_0: RW<ClockConfig0>,
     /// Clock generation configuration 1.
@@ -36,16 +39,16 @@ pub struct RegisterBlock {
     pub clock_config_2: RW<ClockConfig2>,
     /// Clock generation configuration 3.
     pub clock_config_3: RW<ClockConfig3>,
-    _reserved8: [u8; 0x140],
+    _reserved9: [u8; 0x140],
     /// LDO12UHS config.
     pub ldo12uhs_config: RW<Ldo12uhsConfig>,
-    _reserved9: [u8; 0x1f0],
+    _reserved10: [u8; 0x1f0],
     /// Generic Purpose Input/Output config.
     pub gpio_config: [RW<GpioConfig>; 46],
-    _reserved10: [u8; 0x148],
+    _reserved11: [u8; 0x148],
     /// Read value from Generic Purpose Input/Output pads.
     pub gpio_input: [RO<u32>; 2],
-    _reserved11: [u8; 0x18],
+    _reserved12: [u8; 0x18],
     /// Write value to Generic Purpose Input/Output pads.
     pub gpio_output: [RW<u32>; 2],
     /// Set pin output value to high.
@@ -175,6 +178,67 @@ impl SysConfig0 {
     #[inline]
     pub const fn is_pll_enabled(self) -> bool {
         (self.0 & Self::PLL_EN) != 0
+    }
+}
+
+/// Analog-to-Digital Converter clock source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AdcClockSource {
+    //// Audio PLL clock. Used for high-frequency, stable ADC sampling.
+    AuPll = 0,
+    /// Crystal oscillator clock.
+    Xclk = 1,
+}
+
+/// Analog-to-Digital Converter configuration 0 register.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[repr(transparent)]
+pub struct AdcConfig0(u32);
+
+impl AdcConfig0 {
+    const DIV_EN: u32 = 0x1 << 8;
+    const CLK_SEL: u32 = 0x1 << 7;
+    const DIV_LEN: u32 = 0x3FF;
+
+    /// Enable ADC clock divider.
+    #[inline]
+    pub const fn enable_div(self) -> Self {
+        Self(self.0 | Self::DIV_EN)
+    }
+    /// Disable ADC clock divider.
+    #[inline]
+    pub const fn disable_div(self) -> Self {
+        Self(self.0 & !Self::DIV_EN)
+    }
+    /// Check if ADC clock divider is enabled.
+    #[inline]
+    pub const fn is_div_enabled(self) -> bool {
+        (self.0 & Self::DIV_EN) != 0
+    }
+    /// Set ADC clock source.
+    #[inline]
+    pub const fn set_clk_src(self, src: AdcClockSource) -> Self {
+        Self((self.0 & !Self::CLK_SEL) | ((src as u32) << 7))
+    }
+    /// Get ADC clock source.
+    #[inline]
+    pub const fn clk_src(self) -> AdcClockSource {
+        match (self.0 & Self::CLK_SEL) >> 7 {
+            0 => AdcClockSource::AuPll,
+            1 => AdcClockSource::Xclk,
+            _ => unreachable!(),
+        }
+    }
+    /// Set ADC clock divide factor.
+    #[inline]
+    pub const fn set_divide(self, div: u16) -> Self {
+        Self((self.0 & !Self::DIV_LEN) | ((div as u32) & Self::DIV_LEN))
+    }
+    /// Get ADC clock divide factor.
+    #[inline]
+    pub const fn divide(self) -> u16 {
+        (self.0 & Self::DIV_LEN) as u16
     }
 }
 
@@ -606,6 +670,7 @@ impl ClockConfig0 {
 pub struct ClockConfig1(u32);
 
 impl ClockConfig1 {
+    const GPIP: u32 = 0x1 << 2;
     const DMA0: u32 = 0x1 << 12;
     const UART0: u32 = 0x1 << 16;
     const UART1: u32 = 0x1 << 17;
@@ -615,6 +680,21 @@ impl ClockConfig1 {
     const UART2: u32 = 0x1 << 26;
     const LZ4D: u32 = 0x1 << 29;
 
+    /// Enable clock gate for Generic DAC, ADC and ACOMP interface control peripheral.
+    #[inline]
+    pub const fn enable_gpip(self) -> Self {
+        Self(self.0 | Self::GPIP)
+    }
+    /// Disable clock gate for Generic DAC, ADC and ACOMP interface control peripheral.
+    #[inline]
+    pub const fn disable_gpip(self) -> Self {
+        Self(self.0 & !Self::GPIP)
+    }
+    /// Check if clock gate for Generic DAC, ADC and ACOMP interface control peripheral is enabled.
+    #[inline]
+    pub const fn is_gpip_enabled(self) -> bool {
+        self.0 & Self::GPIP != 0
+    }
     /// Enable clock gate for Direct Memory Access controller.
     #[inline]
     pub const fn enable_dma<const I: usize>(self) -> Self {
@@ -1060,14 +1140,16 @@ mod tests {
     use crate::glb::v2::SpiMode;
 
     use super::{
-        ClockConfig1, Drive, Function, GpioConfig, I2cClockSource, I2cConfig, InterruptMode, Mode,
-        ParamConfig, Pull, PwmConfig, PwmSignal0, PwmSignal1, RegisterBlock, RootClkSel, SdhConfig,
-        SpiConfig, SysConfig0, UartConfig, UartMuxGroup, UartSignal,
+        AdcClockSource, AdcConfig0, ClockConfig1, Drive, Function, GpioConfig, I2cClockSource,
+        I2cConfig, InterruptMode, Ldo12uhsConfig, Mode, ParamConfig, Pull, PwmConfig, PwmSignal0,
+        PwmSignal1, RegisterBlock, RootClkSel, SdhConfig, SpiConfig, SysConfig0, UartConfig,
+        UartMuxGroup, UartSignal,
     };
     use core::mem::offset_of;
 
     #[test]
     fn struct_register_block_offset() {
+        assert_eq!(offset_of!(RegisterBlock, adc_config0), 0x110);
         assert_eq!(offset_of!(RegisterBlock, uart_config), 0x150);
         assert_eq!(offset_of!(RegisterBlock, uart_mux_group), 0x154);
         assert_eq!(offset_of!(RegisterBlock, i2c_config), 0x180);
@@ -1145,6 +1227,31 @@ mod tests {
         val = val.disable_pll();
         assert!(!val.is_pll_enabled());
         assert_eq!(val.0, 0x00000000);
+    }
+
+    #[test]
+    fn struct_adc_config0_functions() {
+        let mut val = AdcConfig0(0x0);
+
+        val = val.enable_div();
+        assert!(val.is_div_enabled());
+        assert_eq!(val.0, 0x00000100);
+
+        val = val.disable_div();
+        assert!(!val.is_div_enabled());
+        assert_eq!(val.0, 0x00000000);
+
+        val = val.set_clk_src(AdcClockSource::Xclk);
+        assert_eq!(val.clk_src(), AdcClockSource::Xclk);
+        assert_eq!(val.0, 0x00000080);
+
+        val = val.set_clk_src(AdcClockSource::AuPll);
+        assert_eq!(val.clk_src(), AdcClockSource::AuPll);
+        assert_eq!(val.0, 0x00000000);
+
+        val = val.set_divide(0x3FF);
+        assert_eq!(val.divide(), 0x3FF);
+        assert_eq!(val.0, 0x000003FF);
     }
 
     #[test]
@@ -1491,21 +1598,21 @@ mod tests {
         assert_eq!(config.0, 0x00000000);
         assert!(!config.is_lz4d_enabled());
     }
-}
 
-#[test]
-fn struct_ldo12uhs_config_functions() {
-    let mut config = Ldo12uhsConfig(0x0);
+    #[test]
+    fn struct_ldo12uhs_config_functions() {
+        let mut config = Ldo12uhsConfig(0x0);
 
-    config = config.power_up();
-    assert_eq!(config.0, 0x1);
-    assert!(config.is_powered_up());
+        config = config.power_up();
+        assert_eq!(config.0, 0x1);
+        assert!(config.is_powered_up());
 
-    config = config.power_down();
-    assert_eq!(config.0, 0x0);
-    assert!(!config.is_powered_up());
+        config = config.power_down();
+        assert_eq!(config.0, 0x0);
+        assert!(!config.is_powered_up());
 
-    config = config.set_output_voltage(0x5);
-    assert_eq!(config.0, 0x500000);
-    assert_eq!(config.get_output_voltage(), 0x5);
+        config = config.set_output_voltage(0x5);
+        assert_eq!(config.0, 0x500000);
+        assert_eq!(config.get_output_voltage(), 0x5);
+    }
 }

@@ -2,6 +2,7 @@
 
 use core::ops::Deref;
 
+use crate::glb::{self, v2::AdcClockSource};
 use cfg_if::cfg_if;
 use volatile_register::RW;
 
@@ -160,7 +161,7 @@ impl GpadcConfig {
     /// Set fifo underrun interrupt flag bit.
     #[inline]
     pub fn set_fifo_underrun_clr_bit(self, bit: u8) -> Self {
-        Self(self.0 | Self::FIFO_UNDERRUN_CLR & (Self::FIFO_UNDERRUN_CLR & ((bit as u32) << 10)))
+        Self((self.0 & !Self::FIFO_UNDERRUN_CLR) | (Self::FIFO_UNDERRUN_CLR & ((bit as u32) << 10)))
     }
     /// Clear fifo overrun interrupt flag.
     #[inline]
@@ -170,7 +171,7 @@ impl GpadcConfig {
     /// Set fifo overrun interrupt flag bit.
     #[inline]
     pub fn set_fifo_overrun_clr_bit(self, bit: u8) -> Self {
-        Self(self.0 | Self::FIFO_OVERRUN_CLR & (Self::FIFO_OVERRUN_CLR & ((bit as u32) << 9)))
+        Self((self.0 & !Self::FIFO_OVERRUN_CLR) | (Self::FIFO_OVERRUN_CLR & ((bit as u32) << 9)))
     }
     /// Clear adc coversion ready interrupt flag.
     #[inline]
@@ -180,7 +181,7 @@ impl GpadcConfig {
     /// Set adc coversion ready interrupt flag bit.
     #[inline]
     pub fn set_adc_ready_clr_bit(self, bit: u8) -> Self {
-        Self(self.0 | Self::GPADC_RDY_CLR & (Self::GPADC_RDY_CLR & ((bit as u32) << 8)))
+        Self((self.0 & !Self::GPADC_RDY_CLR) | (Self::GPADC_RDY_CLR & ((bit as u32) << 8)))
     }
     /// Check if fifo underrun interrupt occurs.
     #[inline]
@@ -200,7 +201,7 @@ impl GpadcConfig {
     /// Set fifo ready bit.
     #[inline]
     pub fn set_fifo_ready_bit(self, bit: u8) -> Self {
-        Self(self.0 | Self::FIFO_RDY & (Self::FIFO_RDY & ((bit as u32) << 7)))
+        Self((self.0 & !Self::FIFO_RDY) | (Self::FIFO_RDY & ((bit as u32) << 7)))
     }
     /// Check if adc coversion is ready.
     #[inline]
@@ -225,7 +226,7 @@ impl GpadcConfig {
     /// Set fifo clear bit.
     #[inline]
     pub fn set_fifo_clear_bit(self, bit: u8) -> Self {
-        Self(self.0 | Self::FIFO_CLR & (Self::FIFO_CLR & ((bit as u32) << 1)))
+        Self((self.0 & !Self::FIFO_CLR) | (Self::FIFO_CLR & ((bit as u32) << 1)))
     }
     /// Enable dma.
     #[inline]
@@ -2284,8 +2285,7 @@ pub struct AdcChannels {
 
 /// Dac coniguration structure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct DacConfig {
-}
+pub struct DacConfig {}
 
 pub struct Gpip<G>
 where
@@ -2294,38 +2294,55 @@ where
     gpip: G,
     adc_config: Option<AdcConfig>,
     adc_calibration_complete: bool,
+    adc_coe: f32,
+    adc_os1: u32,
+    adc_os2: i32,
     dac_config: Option<DacConfig>,
     dac_calibration_complete: bool,
 }
 
 impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
     #[inline]
-    pub fn new(gpip: G, adc_config: Option<AdcConfig>, dac_config: Option<DacConfig>) -> Self {
+    pub fn new(
+        gpip: G,
+        adc_config: Option<AdcConfig>,
+        dac_config: Option<DacConfig>,
+        glb: &glb::v2::RegisterBlock,
+    ) -> Self {
+        unsafe {
+            glb.clock_config_1.modify(|val| val.enable_gpip());
+        }
+
         if adc_config.is_some() {
             let config = adc_config.unwrap();
             unsafe {
+                glb.adc_config0.modify(|val| {
+                    val.enable_div()
+                        .set_divide(1)
+                        .set_clk_src(AdcClockSource::Xclk)
+                });
                 gpip.gpadc_command.modify(|v| v.disable_global());
                 gpip.gpadc_command
                     .modify(|v| v.enable_global().start_software_reset());
-    
+
                 for _ in 0..8 {
                     core::arch::asm!("nop");
                 }
-    
+
                 gpip.gpadc_command.modify(|v| v.stop_software_reset());
-    
+
                 gpip.gpadc_config_1.write({
                     let v = GpadcConfig1(0)
                         .set_v18_sel(2)
                         .set_v11_sel(1)
                         .set_clk_div_ratio(config.clk_div)
                         .set_res_sel(config.resolution);
-    
+
                     #[cfg(feature = "bl702")]
                     {
                         let v = v.enable_lowv_det().enable_vcm_hyst_sel().enable_vcm_sel();
                     }
-    
+
                     let v = if config.scan_en {
                         v.enable_scan().enable_clk_ana_inv()
                     } else {
@@ -2338,11 +2355,11 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                     };
                     v
                 });
-    
+
                 for _ in 0..8 {
                     core::arch::asm!("nop");
                 }
-    
+
                 gpip.gpadc_config_2.write({
                     let v = GpadcConfig2(0)
                         .set_dly_sel(2)
@@ -2352,19 +2369,19 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                         .set_chop_mode(2) // Vref AZ and PGA chop on.
                         .set_pga_vcm(1) // PGA output common mode control 1.2V.
                         .set_vref_sel(matches!(config.vref, GpadcVref::V2p0));
-    
+
                     #[cfg(feature = "bl702")]
                     let v = v.set_pga2_gain(0);
                     #[cfg(not(feature = "bl702"))]
                     let v = v.set_pga2_gain(1);
-    
+
                     if config.diff_en {
                         v.enable_diff_mode()
                     } else {
                         v.disable_diff_mode()
                     }
                 });
-    
+
                 gpip.gpadc_command.modify(|v| {
                     // Mic2 diff enable.
                     let v = v.enable_mic2_diff();
@@ -2374,7 +2391,7 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                         v.set_neg_gnd()
                     }
                 });
-    
+
                 // Set calibration offset.
                 gpip.gpadc_define.modify(|v| v.set_os_cal_data(0));
                 gpip.gpadc_config.modify(|v| {
@@ -2403,9 +2420,9 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                     v.disable_neg_satur_interrupt()
                         .disable_pos_satur_interrupt()
                 });
-    
+
                 // TODO: calibrate
-    
+
                 gpip.gpadc_config.modify(|val| {
                     if config.dma_en {
                         val.enable_dma()
@@ -2415,11 +2432,14 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                 });
             }
         }
-        
+
         Self {
             gpip,
             adc_config,
             adc_calibration_complete: false,
+            adc_coe: 0.0,
+            adc_os1: 0,
+            adc_os2: 0,
             dac_config,
             dac_calibration_complete: false,
         }
@@ -2429,12 +2449,143 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
     #[inline]
     pub fn adc_calibrate(&mut self) {}
 
+    /// Update adc trim values.
+    #[inline]
+    pub fn adc_update_trim(&mut self, adc_config: Option<AdcConfig>) {
+        unsafe {
+            self.gpip
+                .gpadc_config_1
+                .modify(|val| val.enable_continuous_conv().disable_scan());
+            self.gpip
+                .gpadc_config_2
+                .modify(|val| val.enable_diff_mode().enable_vbat());
+            self.gpip.gpadc_command.modify(|val| {
+                val.unset_neg_gnd()
+                    .set_pos_sel(GpadcChannel::ChannelVBatHalf)
+                    .set_neg_sel(GpadcChannel::ChannelVBatHalf)
+            });
+        }
+
+        let mut os_val = 0u32;
+        let mut neg = false;
+
+        self.adc_start_conversion();
+
+        for i in 0..10 {
+            unsafe {
+                self.gpip.gpadc_config.modify(|val| val.clear_fifo());
+
+                while self.adc_get_complete_num() == 0 {
+                    core::hint::spin_loop();
+                }
+
+                let raw_val = self.adc_get_raw_data();
+
+                if i > 4 {
+                    let mut val = raw_val;
+                    if val & 0x8000 != 0 {
+                        val = !val + 1;
+                        neg = true;
+                    }
+                    os_val += val & 0xFFFF;
+                }
+            }
+        }
+
+        self.adc_stop_conversion();
+
+        sleep(10);
+
+        self.adc_os2 = if neg {
+            ((os_val / 5) * 2) as i32 - ((os_val / 5) * 4) as i32
+        } else {
+            ((os_val / 5) * 2) as i32
+        };
+
+        self.adc_coe = self.adc_coe - self.adc_os2 as f32 / 40960.0;
+
+        os_val = 0;
+
+        unsafe {
+            self.gpip.gpadc_command.modify(|val| val.set_neg_gnd());
+
+            self.gpip
+                .gpadc_config_2
+                .modify(|val| val.disable_diff_mode().disable_vbat());
+
+            self.gpip.gpadc_command.modify(|val| {
+                val.set_pos_sel(GpadcChannel::ChannelVGND)
+                    .set_neg_sel(GpadcChannel::ChannelVGND)
+            });
+        }
+
+        self.adc_start_conversion();
+
+        for i in 0..10 {
+            unsafe {
+                self.gpip.gpadc_config.modify(|val| val.clear_fifo());
+            }
+
+            while self.adc_get_complete_num() == 0 {
+                core::hint::spin_loop();
+            }
+
+            let regval = self.adc_get_raw_data();
+
+            if i > 4 {
+                os_val += regval & 0xFFFF;
+            }
+        }
+
+        self.adc_stop_conversion();
+        sleep(10);
+
+        self.adc_os1 = if os_val > 0 { os_val / 5 } else { 0 };
+
+        let config = adc_config.unwrap();
+
+        // Restore config.
+        unsafe {
+            self.gpip.gpadc_config_1.modify(|val| {
+                if config.continuous_conv_en {
+                    val.enable_continuous_conv()
+                } else {
+                    val.disable_continuous_conv()
+                };
+                if config.scan_en {
+                    val.enable_scan()
+                } else {
+                    val.disable_scan()
+                }
+            });
+
+            self.gpip.gpadc_config_2.modify(|val| {
+                if config.diff_en {
+                    val.enable_diff_mode()
+                } else {
+                    val.disable_diff_mode()
+                }
+            });
+
+            self.gpip.gpadc_command.modify(|val| {
+                if config.diff_en {
+                    val.unset_neg_gnd()
+                } else {
+                    val.set_neg_gnd()
+                }
+            });
+
+            self.gpip.gpadc_config.modify(|val| val.clear_fifo());
+        }
+    }
+
     /// Feature control.
     #[inline]
     pub fn adc_feature_control(&mut self, cmd: AdcCommmand, vbat_en: bool) {
         match cmd {
             AdcCommmand::ClearFifo => unsafe {
-                self.gpip.gpadc_config
+                self.gpip
+                    .gpadc_config
                     .modify(|val| val.disable_dma().clear_fifo());
                 self.gpip.gpadc_config.modify(|val| {
                     if self.adc_config.unwrap().dma_en {
@@ -2459,9 +2610,17 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
     /// Configure adc channels.
     #[inline]
     pub fn adc_channel_config(&mut self, channels: &[AdcChannels]) {
+        if self.adc_config.is_none() {
+            panic!("ADC config not set");
+        }
+
         if !self.adc_config.unwrap().scan_en {
             if channels.len() > 1 {
-                panic!("Too many adc channels.")
+                panic!("Too many adc channels.");
+            }
+
+            if channels.is_empty() {
+                panic!("No channels provided");
             }
 
             unsafe {
@@ -2469,6 +2628,141 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                     val.set_pos_sel(channels[0].pos_ch)
                         .set_neg_sel(channels[0].neg_ch)
                 });
+            }
+        } else {
+            // 扫描模式：可以配置多个通道（最多12个）
+            if channels.len() > 12 {
+                panic!("Too many channels for scan mode (max 12)");
+            }
+
+            if channels.is_empty() {
+                panic!("No channels provided");
+            }
+
+            if channels.len() <= 6 {
+                // 前6个通道：使用sequence_1和sequence_3的具体方法
+                unsafe {
+                    let mut seq1 = AdcConverationSequence1(0);
+                    let mut seq3 = AdcConverationSequence3(0);
+
+                    // 根据通道数量设置相应的位置
+                    for (i, channel) in channels.iter().enumerate() {
+                        match i {
+                            0 => {
+                                seq1 = seq1.set_scan_pos_0(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_0(channel.neg_ch);
+                            }
+                            1 => {
+                                seq1 = seq1.set_scan_pos_1(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_1(channel.neg_ch);
+                            }
+                            2 => {
+                                seq1 = seq1.set_scan_pos_2(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_2(channel.neg_ch);
+                            }
+                            3 => {
+                                seq1 = seq1.set_scan_pos_3(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_3(channel.neg_ch);
+                            }
+                            4 => {
+                                seq1 = seq1.set_scan_pos_4(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_4(channel.neg_ch);
+                            }
+                            5 => {
+                                seq1 = seq1.set_scan_pos_5(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_5(channel.neg_ch);
+                            }
+                            _ => unreachable!("已经检查了通道数量"),
+                        }
+                    }
+
+                    self.gpip.adc_converation_sequence_1.write(seq1);
+                    self.gpip.adc_converation_sequence_3.write(seq3);
+                }
+            } else {
+                // 超过6个通道：需要使用两个sequence寄存器组
+                unsafe {
+                    let mut seq1 = AdcConverationSequence1(0);
+                    let mut seq2 = AdcConverationSequence2(0);
+                    let mut seq3 = AdcConverationSequence3(0);
+                    let mut seq4 = AdcConverationSequence4(0);
+
+                    // 前6个通道使用sequence_1和sequence_3
+                    for i in 0..6 {
+                        let channel = &channels[i];
+                        match i {
+                            0 => {
+                                seq1 = seq1.set_scan_pos_0(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_0(channel.neg_ch);
+                            }
+                            1 => {
+                                seq1 = seq1.set_scan_pos_1(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_1(channel.neg_ch);
+                            }
+                            2 => {
+                                seq1 = seq1.set_scan_pos_2(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_2(channel.neg_ch);
+                            }
+                            3 => {
+                                seq1 = seq1.set_scan_pos_3(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_3(channel.neg_ch);
+                            }
+                            4 => {
+                                seq1 = seq1.set_scan_pos_4(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_4(channel.neg_ch);
+                            }
+                            5 => {
+                                seq1 = seq1.set_scan_pos_5(channel.pos_ch);
+                                seq3 = seq3.set_scan_neg_5(channel.neg_ch);
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+
+                    // 后面的通道（6-11）使用sequence_2和sequence_4
+                    for i in 6..channels.len() {
+                        let channel = &channels[i];
+                        match i - 6 {
+                            0 => {
+                                seq2 = seq2.set_scan_pos_6(channel.pos_ch);
+                                seq4 = seq4.set_scan_neg_6(channel.neg_ch);
+                            }
+                            1 => {
+                                seq2 = seq2.set_scan_pos_7(channel.pos_ch);
+                                seq4 = seq4.set_scan_neg_7(channel.neg_ch);
+                            }
+                            2 => {
+                                seq2 = seq2.set_scan_pos_8(channel.pos_ch);
+                                seq4 = seq4.set_scan_neg_8(channel.neg_ch);
+                            }
+                            3 => {
+                                seq2 = seq2.set_scan_pos_9(channel.pos_ch);
+                                seq4 = seq4.set_scan_neg_9(channel.neg_ch);
+                            }
+                            4 => {
+                                seq2 = seq2.set_scan_pos_10(channel.pos_ch);
+                                seq4 = seq4.set_scan_neg_10(channel.neg_ch);
+                            }
+                            5 => {
+                                seq2 = seq2.set_scan_pos_11(channel.pos_ch);
+                                seq4 = seq4.set_scan_neg_11(channel.neg_ch);
+                            }
+                            _ => unreachable!("最多12个通道"),
+                        }
+                    }
+
+                    self.gpip.adc_converation_sequence_1.write(seq1);
+                    self.gpip.adc_converation_sequence_2.write(seq2);
+                    self.gpip.adc_converation_sequence_3.write(seq3);
+                    self.gpip.adc_converation_sequence_4.write(seq4);
+                }
+            }
+
+            // 设置扫描长度
+            unsafe {
+                self.gpip
+                    .gpadc_config_1
+                    .modify(|val| val.set_scan_length((channels.len() - 1) as u8));
             }
         }
     }
@@ -2537,65 +2831,113 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
     }
 
     /// Get internal temperature sensor's temperature.
-    pub fn adc_get_tsen_temp(&mut self) -> f32 {
+    pub fn adc_get_tsen_temp<W>(&mut self, writer: &mut W) -> f32
+    where
+        W: embedded_io::Write,
+    {
+        const TSEN_OFFSET: f32 = 2042.0;
+
+        writeln!(writer, "=== Starting temperature sensor reading ===").ok();
+
         unsafe {
             self.gpip.gpadc_config.modify(|val| {
                 val.set_fifo_threshold(GpadcFifoThreshold::OneData)
                     .clear_fifo()
             });
+        }
+
+        unsafe {
             self.gpip
                 .gpadc_config_2
                 .modify(|val| val.disable_tsvbe_low());
         }
+
         self.adc_start_conversion();
 
-        let mut sum = 0;
+        let mut sum0 = 0u32;
+        let sample_count = 16;
+
         for _ in 0..8 {
+            let mut i = 100u32;
             while self.adc_get_complete_num() == 0 {
-                core::hint::spin_loop();
+                // core::hint::spin_loop();
+                sleep(1);
+                if i > 0 {
+                    i -= 1;
+                } else {
+                    writeln!(writer, "ADC conversion timed out").ok();
+                    panic!("ADC conversion timed out");
+                }
             }
             let _ = self.adc_get_raw_data();
         }
-        for _ in 0..16 {
-            while self.adc_get_complete_num() == 0 {
-                core::hint::spin_loop();
-            }
-            sum += self.adc_get_raw_data() & 0xFFFF;
-        }
-        self.adc_stop_conversion();
 
-        let v0 = (sum as f32 + 8.0) / 16.0;
+        for _ in 0..sample_count {
+            let mut i = 100u32;
+            while self.adc_get_complete_num() == 0 {
+                // core::hint::spin_loop();
+                sleep(1);
+                if i > 0 {
+                    i -= 1;
+                } else {
+                    writeln!(writer, "ADC conversion timed out").ok();
+                    panic!("ADC conversion timed out");
+                }
+            }
+            sum0 += self.adc_get_raw_data() & 0xFFFF;
+        }
+
+        self.adc_stop_conversion();
+        let v0 = (sum0 + 8) / 16;
 
         unsafe {
             self.gpip.gpadc_config.modify(|val| val.clear_fifo());
             self.gpip
                 .gpadc_config_2
-                .modify(|val| val.disable_tsvbe_low());
+                .modify(|val| val.enable_tsvbe_low());
         }
+
         self.adc_start_conversion();
 
-        sum = 0;
+        let mut sum1 = 0u32;
+
         for _ in 0..8 {
+            let mut i = 100u32;
             while self.adc_get_complete_num() == 0 {
-                core::hint::spin_loop();
+                // core::hint::spin_loop();
+                sleep(1);
+                if i > 0 {
+                    i -= 1;
+                } else {
+                    writeln!(writer, "ADC conversion timed out").ok();
+                    panic!("ADC conversion timed out");
+                }
             }
             let _ = self.adc_get_raw_data();
         }
-        for _ in 0..16 {
+
+        for _ in 0..sample_count {
+            let mut i = 100u32;
             while self.adc_get_complete_num() == 0 {
-                core::hint::spin_loop();
+                // core::hint::spin_loop();
+                sleep(1);
+                if i > 0 {
+                    i -= 1;
+                } else {
+                    writeln!(writer, "ADC conversion timed out").ok();
+                    panic!("ADC conversion timed out");
+                }
             }
-            sum += self.adc_get_raw_data() & 0xFFFF;
+            sum1 += self.adc_get_raw_data() & 0xFFFF;
         }
+
         self.adc_stop_conversion();
+        let v1 = (sum1 + 8) / 16;
 
-        let v1 = (sum as f32 + 8.0) / 16.0;
-
-        let tsen_offset = 0.0;
         if v0 > v1 {
-            ((v0 - v1) - tsen_offset) / 7.753
+            ((v0 as f32 - v1 as f32) - TSEN_OFFSET) / 7.753
         } else {
-            ((v1 - v0) - tsen_offset) / 7.753
+            0.0
         }
     }
 
@@ -2609,7 +2951,7 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
 }
 
 fn sleep(n: u32) {
-    for _ in 0..n * 125 {
+    for _ in 0..n * 1000 {
         unsafe { core::arch::asm!("nop") }
     }
 }

@@ -2,7 +2,7 @@
 #![no_main]
 
 use bouffalo_hal::{
-    gpip::{Gpip, AdcChannels, AdcCommmand, AdcConfig, GpadcChannel},
+    gpip::{AdcChannels, AdcConfig, GpadcChannel, Gpip},
     prelude::*,
     uart::Config,
 };
@@ -21,20 +21,46 @@ fn main(p: Peripherals, c: Clocks) -> ! {
     let config = Config::default().set_baudrate(2000000.Bd());
     let mut serial = p.uart0.freerun(config, pads, &c).unwrap();
 
-    // let mut adc = Gpip::new(p.gpip, Some(AdcConfig::default()), None);
-    // let chans = AdcChannels {
-    //     pos_ch: GpadcChannel::ChannelTSENP,
-    //     neg_ch: GpadcChannel::ChannelVGND,
-    // };
+    let mut adc = Gpip::new(p.gpip, Some(AdcConfig::default()), None, &p.glb);
 
-    // adc.adc_channel_config(&[chans]);
-    // adc.adc_tsen_init(false);
+    const BASE_ADDR: *const u32 = 0x20002000 as *const u32;
+    const MAX_OFFSET: u32 = 0x938;
+
+    writeln!(
+        serial,
+        "Rust code printing register values from base address 0x{:08X}",
+        BASE_ADDR as u32
+    )
+    .ok();
+
+    let mut offset = 0u32;
+    while offset <= MAX_OFFSET {
+        unsafe {
+            let addr = BASE_ADDR.add((offset / 4) as usize);
+            let val = core::ptr::read_volatile(addr);
+            writeln!(serial, "val[0x{:08X}]: 0x{:08X}", offset, val).ok();
+        }
+        offset += 4;
+    }
+
+    let chans = AdcChannels {
+        pos_ch: GpadcChannel::ChannelTSENP,
+        neg_ch: GpadcChannel::ChannelVGND,
+    };
+
+    adc.adc_channel_config(&[chans]);
+    adc.adc_tsen_init(false);
+    // adc.adc_update_trim(Some(AdcConfig::default()));
+
     writeln!(serial, "Init done").ok();
 
-    // for _ in 0..5 {
-    //     delay(100);
-    //     writeln!(serial, "temp = {}.", adc.adc_get_tsen_temp() as u32);
-    // }
+    for _ in 0..5 {
+        delay(100);
+        writeln!(serial, "adc read: {}", adc.adc_get_raw_data()).ok();
+        writeln!(serial, "adc complete num: {}", adc.adc_get_complete_num()).ok();
+        let temp = adc.adc_get_tsen_temp(&mut serial) as u32;
+        writeln!(serial, "temp = {}.", temp).ok();
+    }
 
     loop {}
 }
