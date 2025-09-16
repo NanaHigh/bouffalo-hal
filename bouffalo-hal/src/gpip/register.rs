@@ -584,33 +584,40 @@ impl<G: Deref<Target = RegisterBlock>> Gpip<G> {
                 // Set calibration offset.
                 hbn.gpadc_define.modify(|v| v.set_os_cal_data(0));
 
+                // Initialize GPIP config register to match C version exactly
+                // Equivalent to C code: regval |= (GPIP_GPADC_FIFO_UNDERRUN_MASK | GPIP_GPADC_FIFO_OVERRUN_MASK | GPIP_GPADC_RDY_MASK |
+                //                                 GPIP_GPADC_FIFO_UNDERRUN_CLR | GPIP_GPADC_FIFO_OVERRUN_CLR | GPIP_GPADC_RDY_CLR);
                 gpip.gpadc_config.modify(|v| {
                     let v = v
-                        .disable_fifo_overrun()
-                        .disable_fifo_underrun()
-                        .disable_adc_ready()
-                        .clear_fifo_overrun()
-                        .clear_fifo_underrun()
-                        .clear_adc_ready()
-                        .clear_fifo()
-                        // Set this bit to 0.
-                        .set_fifo_threshold(GpadcFifoThreshold::OneData)
-                        .disable_dma();
+                        .disable_fifo_overrun() // Set FIFO_OVERRUN_MASK
+                        .disable_fifo_underrun() // Set FIFO_UNDERRUN_MASK
+                        .disable_adc_ready() // Set RDY_MASK
+                        .clear_fifo_overrun() // Set FIFO_OVERRUN_CLR
+                        .clear_fifo_underrun() // Set FIFO_UNDERRUN_CLR
+                        .clear_adc_ready() // Set RDY_CLR
+                        .clear_fifo() // Set FIFO_CLR
+                        .set_fifo_threshold(GpadcFifoThreshold::OneData) // Clear FIFO_THL to 0 (OneData = 0)
+                        .disable_dma(); // Clear DMA_EN
                     #[cfg(feature = "bl702")]
                     let v = v.disable_fifo_ready().set_fifo_ready_bit(1);
                     v
                 });
+
+                // Clear the clear bits (equivalent to second write in C)
                 gpip.gpadc_config.modify(|v| {
                     v.set_fifo_underrun_clr_bit(0)
                         .set_fifo_overrun_clr_bit(0)
                         .set_adc_ready_clr_bit(0)
                         .set_fifo_clear_bit(0)
                 });
+
+                // Disable saturation interrupts
                 hbn.gpadc_interrupt_state.modify(|v| {
                     v.disable_neg_satur_interrupt()
                         .disable_pos_satur_interrupt()
                 });
 
+                // Final DMA setting
                 gpip.gpadc_config.modify(|val| {
                     if config.dma_en {
                         val.enable_dma()
